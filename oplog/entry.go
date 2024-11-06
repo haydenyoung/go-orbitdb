@@ -10,7 +10,10 @@ import (
 )
 
 type Entry struct {
+	ID      string
 	Payload string
+	Clock   Clock
+	V       int
 }
 
 type EncodedEntry struct {
@@ -19,17 +22,30 @@ type EncodedEntry struct {
 	CID   cid.Cid
 }
 
-func NewEntry(payload string) EncodedEntry {
-	entry := Entry{Payload: payload}
+func NewEntry(id string, payload string, clock Clock) EncodedEntry {
+	entry := Entry{
+		ID:      id,
+		Payload: payload,
+		Clock:   clock,
+		V:       2,
+	}
 	return Encode(entry)
 }
 
 func Encode(entry Entry) EncodedEntry {
 	// Define the schema and encode the entry to CBOR format
 	ts, err := ipld.LoadSchemaBytes([]byte(`
+		type Clock struct {
+			id String
+			time Int
+		} representation map
+
 		type Entry struct {
+			id String
 			payload String
-		} representation tuple
+			clock Clock
+			v Int
+		} representation map
 	`))
 	if err != nil {
 		panic(err)
