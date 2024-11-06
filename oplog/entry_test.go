@@ -6,13 +6,32 @@ import (
 )
 
 func TestNewEntry(t *testing.T) {
-	// Create a new entry with a sample payload
+	// Create an ID and a Clock for the entry
+	id := "test-log-id"
+	clock := NewClock("test-id", 1)
+
+	// Create a new entry with an id, clock, and sample payload
 	payload := "some entry"
-	e := NewEntry(payload)
+	e := NewEntry(id, payload, *clock)
+
+	// Check if the ID is correctly set
+	if e.ID != id {
+		t.Errorf("Expected ID %s, got %s", id, e.ID)
+	}
 
 	// Check if the payload is correctly set
 	if e.Payload != payload {
 		t.Errorf("Expected Payload %s, got %s", payload, e.Payload)
+	}
+
+	// Check if the clock is correctly set
+	if e.Clock.id != clock.id || e.Clock.time != clock.time {
+		t.Errorf("Expected Clock %v, got %v", clock, e.Clock)
+	}
+
+	// Check if the version is set to 2
+	if e.V != 2 {
+		t.Errorf("Expected version 2, got %d", e.V)
 	}
 
 	// Check if the CBOR bytes are non-empty
