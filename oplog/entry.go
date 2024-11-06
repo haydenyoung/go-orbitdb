@@ -10,10 +10,13 @@ import (
 )
 
 type Entry struct {
-	ID      string
-	Payload string
-	Clock   Clock
-	V       int
+	ID        string
+	Payload   string
+	Clock     Clock
+	V         int
+	Key       string // Public key of the identity
+	Identity  string // Identity hash or identifier
+	Signature string // Signature of the entry
 }
 
 type EncodedEntry struct {
@@ -22,18 +25,42 @@ type EncodedEntry struct {
 	CID   cid.Cid
 }
 
-func NewEntry(id string, payload string, clock Clock) EncodedEntry {
+func NewEntry(identity *Identity, id string, payload string, clock Clock) EncodedEntry {
 	entry := Entry{
-		ID:      id,
-		Payload: payload,
-		Clock:   clock,
-		V:       2,
+		ID:       id,
+		Payload:  payload,
+		Clock:    clock,
+		V:        2,
+		Key:      identity.PublicKeyHex(), // Convert public key to hex string for storage
+		Identity: identity.Identity,       // Use the identity's identifier (hash)
 	}
-	return Encode(entry)
+
+	// Encode the entry to CBOR
+	encodedEntry := Encode(entry)
+
+	// Sign the encoded entry data
+	signature, err := identity.Sign(encodedEntry.Bytes.Bytes())
+	if err != nil {
+		panic(err)
+	}
+
+	// Set the signature in the encoded entry
+	encodedEntry.Entry.Signature = signature
+
+	return encodedEntry
+}
+
+func VerifyEntrySignature(identity *Identity, entry EncodedEntry) bool {
+	// Verify the signature using the provided identity
+	valid, err := identity.VerifySignature(entry.Bytes.Bytes(), entry.Signature)
+	if err != nil {
+		return false
+	}
+	return valid
 }
 
 func Encode(entry Entry) EncodedEntry {
-	// Define the schema and encode the entry to CBOR format
+	// Define the schema for Entry, including the new fields
 	ts, err := ipld.LoadSchemaBytes([]byte(`
 		type Clock struct {
 			id String
@@ -45,6 +72,9 @@ func Encode(entry Entry) EncodedEntry {
 			payload String
 			clock Clock
 			v Int
+			key String
+			identity String
+			signature String
 		} representation map
 	`))
 	if err != nil {
