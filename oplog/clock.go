@@ -1,16 +1,16 @@
 package oplog
 
-type clock struct {
+type Clock struct {
 	id   string
 	time int
 }
 
-func NewClock(id string, time int) *clock {
-	c := clock{id: id, time: time}
+func NewClock(id string, time int) *Clock {
+	c := Clock{id: id, time: time}
 	return &c
 }
 
-func CompareClocks(a clock, b clock) (res int) {
+func CompareClocks(a Clock, b Clock) (res int) {
 	dist := a.time - b.time
 	res = dist
 
@@ -25,6 +25,6 @@ func CompareClocks(a clock, b clock) (res int) {
 	return
 }
 
-func TickClock(c clock) clock {
-	return clock{id: c.id, time: c.time + 1}
+func TickClock(c Clock) Clock {
+	return Clock{id: c.id, time: c.time + 1}
 }
