@@ -12,6 +12,8 @@ import (
 type Entry struct {
 	ID        string
 	Payload   string
+	Next      []string
+	Refs      []string
 	Clock     Clock
 	V         int
 	Key       string // Public key of the identity
@@ -33,6 +35,8 @@ func NewEntry(identity *Identity, id string, payload string, clock Clock) Encode
 		V:        2,
 		Key:      identity.PublicKeyHex(), // Convert public key to hex string for storage
 		Identity: identity.Identity,       // Use the identity's identifier (hash)
+		Next:     []string{},              // Initialize Next as empty array
+		Refs:     []string{},              // Initialize Refs as empty array
 	}
 
 	// Encode the entry to CBOR
@@ -68,13 +72,15 @@ func Encode(entry Entry) EncodedEntry {
 		} representation map
 
 		type Entry struct {
-			id String
-			payload String
-			clock Clock
-			v Int
-			key String
-			identity String
-			signature String
+			ID String
+			Payload String
+			Next [String]
+			Refs [String]
+			Clock Clock
+			V Int
+			Key String
+			Identity String
+			Signature String
 		} representation map
 	`))
 	if err != nil {
