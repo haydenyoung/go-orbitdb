@@ -4,6 +4,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/asn1"
 	"encoding/hex"
 	"errors"
 	"math/big"
@@ -11,6 +12,11 @@ import (
 )
 
 type PublicKeyIdentityProvider struct {
+}
+
+// Struct for DER decoding
+type ecdsaSignature struct {
+	R, S *big.Int
 }
 
 // NewPublicKeyIdentityProvider initializes a new PublicKeyIdentityProvider
@@ -66,19 +72,19 @@ func (p *PublicKeyIdentityProvider) VerifyIdentityWithEntry(identity *identities
 	// Hash the data to verify
 	hash := sha256.Sum256(data)
 
-	// Decode the signature from hex format
-	r := new(big.Int)
-	s := new(big.Int)
-	sigLen := len(signature) / 2
-	if _, ok := r.SetString(signature[:sigLen], 16); !ok {
-		return false, errors.New("invalid signature format")
-	}
-	if _, ok := s.SetString(signature[sigLen:], 16); !ok {
-		return false, errors.New("invalid signature format")
+	// Decode the hex-encoded DER signature
+	signatureBytes, err := hex.DecodeString(signature)
+	if err != nil {
+		return false, errors.New("failed to decode signature from hex")
 	}
 
-	// Verify the signature using the public key
-	return ecdsa.Verify(&identity.PublicKey, hash[:], r, s), nil
+	var sig ecdsaSignature
+	if _, err := asn1.Unmarshal(signatureBytes, &sig); err != nil {
+		return false, errors.New("invalid DER signature format")
+	}
+
+	// Verify the signature using the public key and the decoded r, s values
+	return ecdsa.Verify(&identity.PublicKey, hash[:], sig.R, sig.S), nil
 }
 
 // Helper function to verify ECDSA signature
