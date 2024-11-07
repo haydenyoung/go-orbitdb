@@ -1,4 +1,4 @@
-package oplog
+package identities
 
 import (
 	"crypto/ecdsa"
@@ -6,14 +6,19 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
-	"math/big"
 )
 
 // Identity represents an identity with a public-private key pair
 type Identity struct {
+	ID         string
 	PublicKey  ecdsa.PublicKey
 	PrivateKey ecdsa.PrivateKey
 	Identity   string
+	Type       string // Type of identity, e.g., "publickey"
+	Signatures struct {
+		ID        string
+		PublicKey string
+	}
 }
 
 // NewIdentity generates a new identity with a public-private key pair
@@ -28,9 +33,11 @@ func NewIdentity() (*Identity, error) {
 	identity := hex.EncodeToString(identityHash[:])
 
 	return &Identity{
+		ID:         identity,
 		PublicKey:  publicKey,
 		PrivateKey: *privateKey,
-		Identity:   identity,
+		Type:       "publickey",
+		Signatures: struct{ ID, PublicKey string }{},
 	}, nil
 }
 
@@ -42,20 +49,6 @@ func (id *Identity) Sign(data []byte) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(r.Bytes()) + hex.EncodeToString(s.Bytes()), nil
-}
-
-// VerifySignature verifies the signature for the given data
-func (id *Identity) VerifySignature(data []byte, signature string) (bool, error) {
-	hash := sha256.Sum256(data)
-	r := new(big.Int)
-	s := new(big.Int)
-
-	sigLen := len(signature) / 2
-	r.SetString(signature[:sigLen], 16)
-	s.SetString(signature[sigLen:], 16)
-
-	valid := ecdsa.Verify(&id.PublicKey, hash[:], r, s)
-	return valid, nil
 }
 
 // PublicKeyHex returns the public key as a hex-encoded string
