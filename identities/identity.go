@@ -5,7 +5,9 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/asn1"
 	"encoding/hex"
+	"math/big"
 )
 
 // Identity represents an identity with a public-private key pair
@@ -19,6 +21,11 @@ type Identity struct {
 		ID        string
 		PublicKey string
 	}
+}
+
+// ecdsaSignature is a struct for DER-encoded ECDSA signatures
+type ecdsaSignature struct {
+	R, S *big.Int
 }
 
 // NewIdentity generates a new identity with a public-private key pair
