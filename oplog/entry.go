@@ -29,6 +29,12 @@ type EncodedEntry struct {
 	CID   cid.Cid
 }
 
+func (e EncodedEntry) GetBase58CID() string {
+	// Convert CID to base58btc encoding
+	cidBase58, _ := e.CID.StringOfBase(multibase.Base58BTC)
+	return cidBase58
+}
+
 func NewEntry(identity *identities.Identity, id string, payload string, clock Clock) EncodedEntry {
 	if identity == nil {
 		panic("Identity is required, cannot create entry")
