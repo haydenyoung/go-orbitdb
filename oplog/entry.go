@@ -30,6 +30,16 @@ type EncodedEntry struct {
 }
 
 func NewEntry(identity *identities.Identity, id string, payload string, clock Clock) EncodedEntry {
+	if identity == nil {
+		panic("Identity is required, cannot create entry")
+	}
+	if id == "" {
+		panic("Entry requires an id")
+	}
+	if payload == "" {
+		panic("Entry requires a payload")
+	}
+
 	entry := Entry{
 		ID:       id,
 		Payload:  payload,
