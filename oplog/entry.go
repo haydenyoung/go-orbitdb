@@ -80,15 +80,15 @@ func Encode(entry Entry) EncodedEntry {
 		} representation map
 
 		type Entry struct {
-			ID String
-			Payload String
-			Next [String]
-			Refs [String]
-			Clock Clock
-			V Int
-			Key String
-			Identity String
-			Signature String
+			id String
+			payload String
+			next [String]
+			refs [String]
+			clock Clock
+			v Int
+			key String
+			identity String
+			sig String
 		} representation map
 	`))
 	if err != nil {
