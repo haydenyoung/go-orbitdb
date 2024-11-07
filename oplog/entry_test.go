@@ -2,12 +2,21 @@ package oplog
 
 import (
 	"bytes"
+	"orbitdb/go-orbitdb/identities"
+	"orbitdb/go-orbitdb/identities/provider_registry"
+	"orbitdb/go-orbitdb/identities/providers"
 	"testing"
 )
 
 func TestNewEntry(t *testing.T) {
+	// Register the PublicKeyIdentityProvider if not already registered
+	err := provider_registry.UseIdentityProvider(providers.NewPublicKeyIdentityProvider())
+	if err != nil && err.Error() != "identity provider already registered" {
+		t.Fatalf("Failed to register identity provider: %v", err)
+	}
+
 	// Create an identity for the entry
-	identity, err := NewIdentity()
+	identity, err := identities.NewIdentity()
 	if err != nil {
 		t.Fatalf("Failed to create identity: %v", err)
 	}
@@ -74,7 +83,7 @@ func TestNewEntry(t *testing.T) {
 
 func TestEncode(t *testing.T) {
 	// Create an identity for the entry
-	identity, err := NewIdentity()
+	identity, err := identities.NewIdentity()
 	if err != nil {
 		t.Fatalf("Failed to create identity: %v", err)
 	}

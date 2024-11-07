@@ -7,11 +7,15 @@ import (
 	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	"github.com/ipld/go-ipld-prime/node/bindnode"
 	mh "github.com/multiformats/go-multihash"
+	"orbitdb/go-orbitdb/identities"
+	"orbitdb/go-orbitdb/identities/provider_registry"
 )
 
 type Entry struct {
 	ID        string
 	Payload   string
+	Next      []string
+	Refs      []string
 	Clock     Clock
 	V         int
 	Key       string // Public key of the identity
@@ -25,7 +29,7 @@ type EncodedEntry struct {
 	CID   cid.Cid
 }
 
-func NewEntry(identity *Identity, id string, payload string, clock Clock) EncodedEntry {
+func NewEntry(identity *identities.Identity, id string, payload string, clock Clock) EncodedEntry {
 	entry := Entry{
 		ID:       id,
 		Payload:  payload,
@@ -33,6 +37,8 @@ func NewEntry(identity *Identity, id string, payload string, clock Clock) Encode
 		V:        2,
 		Key:      identity.PublicKeyHex(), // Convert public key to hex string for storage
 		Identity: identity.Identity,       // Use the identity's identifier (hash)
+		Next:     []string{},              // Initialize Next as empty array
+		Refs:     []string{},              // Initialize Refs as empty array
 	}
 
 	// Encode the entry to CBOR
@@ -50,9 +56,15 @@ func NewEntry(identity *Identity, id string, payload string, clock Clock) Encode
 	return encodedEntry
 }
 
-func VerifyEntrySignature(identity *Identity, entry EncodedEntry) bool {
-	// Verify the signature using the provided identity
-	valid, err := identity.VerifySignature(entry.Bytes.Bytes(), entry.Signature)
+func VerifyEntrySignature(identity *identities.Identity, entry EncodedEntry) bool {
+	// Retrieve the identity provider for the identity type
+	provider, err := provider_registry.GetIdentityProvider(identity.Type)
+	if err != nil {
+		return false // Provider not found or error retrieving it
+	}
+
+	// Use the provider to verify the identity by checking the entry's data and signature
+	valid, err := provider.VerifyIdentityWithEntry(identity, entry.Bytes.Bytes(), entry.Signature)
 	if err != nil {
 		return false
 	}
@@ -68,13 +80,15 @@ func Encode(entry Entry) EncodedEntry {
 		} representation map
 
 		type Entry struct {
-			id String
-			payload String
-			clock Clock
-			v Int
-			key String
-			identity String
-			signature String
+			ID String
+			Payload String
+			Next [String]
+			Refs [String]
+			Clock Clock
+			V Int
+			Key String
+			Identity String
+			Signature String
 		} representation map
 	`))
 	if err != nil {
