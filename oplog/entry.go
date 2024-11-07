@@ -122,6 +122,8 @@ func Encode(entry Entry) EncodedEntry {
 		panic(err)
 	}
 
+	fmt.Println("Raw CBOR Encoded Bytes in Go (Hex):", hex.EncodeToString(buf.Bytes()))
+
 	// Hash the bytes and generate a CID
 	hash, err := mh.Sum(buf.Bytes(), mh.SHA2_256, -1) // SHA-256 hash
 	if err != nil {
