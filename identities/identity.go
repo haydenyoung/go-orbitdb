@@ -55,7 +55,15 @@ func (id *Identity) Sign(data []byte) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return hex.EncodeToString(r.Bytes()) + hex.EncodeToString(s.Bytes()), nil
+
+	// DER-encode the r and s values
+	signature, err := asn1.Marshal(ecdsaSignature{r, s})
+	if err != nil {
+		return "", err
+	}
+
+	// Return the hex-encoded DER signature
+	return hex.EncodeToString(signature), nil
 }
 
 // PublicKeyHex returns the public key as a hex-encoded string
