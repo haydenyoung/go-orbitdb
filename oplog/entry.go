@@ -2,10 +2,13 @@ package oplog
 
 import (
 	"bytes"
+	"encoding/hex"
+	"fmt"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	"github.com/ipld/go-ipld-prime/node/bindnode"
+	"github.com/multiformats/go-multibase"
 	mh "github.com/multiformats/go-multihash"
 	"orbitdb/go-orbitdb/identities"
 	"orbitdb/go-orbitdb/identities/provider_registry"
