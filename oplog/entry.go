@@ -30,6 +30,7 @@ type EncodedEntry struct {
 	Entry
 	Bytes bytes.Buffer
 	CID   cid.Cid
+	Hash  string
 }
 
 func (e EncodedEntry) GetBase58CID() string {
@@ -81,9 +82,12 @@ func NewEntry(identity *identitytypes.Identity, id string, payload string, clock
 	entry.Identity = identity.Hash
 	entry.Signature = signature
 
-	// Re-encode the entry with the newly assigned fields
-	finalEncodedEntry := Encode(entry)
-	return finalEncodedEntry
+	return EncodedEntry{
+		Entry: entry,
+		Bytes: encodedEntry.Bytes,
+		CID:   encodedEntry.CID,
+		Hash:  encodedEntry.Hash,
+	}
 }
 
 func VerifyEntrySignature(identity *identitytypes.Identity, entry EncodedEntry) bool {
@@ -112,7 +116,7 @@ func IsEntry(entry Entry) bool {
 
 // IsEqual checks if two entries are equal based on their hash values
 func IsEqual(a EncodedEntry, b EncodedEntry) bool {
-	return bytes.Equal(a.Bytes.Bytes(), b.Bytes.Bytes())
+	return a.Hash == b.Hash
 }
 
 // Encode encodes the entry into CBOR and returns an EncodedEntry
@@ -148,18 +152,20 @@ func Encode(entry Entry) EncodedEntry {
 		panic(err)
 	}
 
-	fmt.Println("Raw CBOR Encoded Bytes in Go (Hex):", hex.EncodeToString(buf.Bytes()))
+	// Calculate CID for CBOR-encoded bytes
+	hash, err := mh.Sum(buf.Bytes(), mh.SHA2_256, -1)
+	if err != nil {
+		panic(err)
+	}
+	c := cid.NewCidV1(cid.DagCBOR, hash)
 
-	// Hash the bytes and generate a CID
-	hash, err := mh.Sum(buf.Bytes(), mh.SHA2_256, -1) // SHA-256 hash
+	// Encode CID to base58btc for the hash
+	hashStr, err := c.StringOfBase(multibase.Base58BTC)
 	if err != nil {
 		panic(err)
 	}
 
-	c := cid.NewCidV1(cid.DagCBOR, hash) // Create CID with DAG-CBOR codec
-
-	// Return the EncodedEntry with CID
-	return EncodedEntry{Entry: entry, Bytes: buf, CID: c}
+	return EncodedEntry{Entry: entry, Bytes: buf.Bytes(), CID: c, Hash: hashStr}
 }
 
 // Helper function to set a default clock if not provided
