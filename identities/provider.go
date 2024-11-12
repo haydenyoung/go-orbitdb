@@ -1,7 +1,6 @@
 package identities
 
 import (
-	"crypto/ecdsa"
 	"errors"
 	"orbitdb/go-orbitdb/identities/identitytypes"
 )
@@ -9,7 +8,7 @@ import (
 // Provider defines an interface for identity providers.
 type Provider interface {
 	Type() string
-	CreateIdentity(id string, privateKey *ecdsa.PrivateKey) (*identitytypes.Identity, error)
+	CreateIdentity(id string) (*identitytypes.Identity, error)
 	VerifyIdentity(identity *identitytypes.Identity, signature string, data []byte) bool
 }
 

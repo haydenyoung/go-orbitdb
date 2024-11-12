@@ -1,7 +1,6 @@
 package identities
 
 import (
-	"crypto/ecdsa"
 	"orbitdb/go-orbitdb/identities/identitytypes" // Updated import path
 	"orbitdb/go-orbitdb/identities/providers"
 )
@@ -26,8 +25,8 @@ func NewIdentities(providerType string) (*Identities, error) {
 }
 
 // CreateIdentity generates a new identity using the selected provider.
-func (ids *Identities) CreateIdentity(id string, privateKey *ecdsa.PrivateKey) (*identitytypes.Identity, error) {
-	identity, err := ids.provider.CreateIdentity(id, privateKey)
+func (ids *Identities) CreateIdentity(id string) (*identitytypes.Identity, error) {
+	identity, err := ids.provider.CreateIdentity(id)
 	if err != nil {
 		return nil, err
 	}

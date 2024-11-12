@@ -1,9 +1,6 @@
 package oplog
 
 import (
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
 	"testing"
 
 	"orbitdb/go-orbitdb/identities/identitytypes"
@@ -11,13 +8,9 @@ import (
 )
 
 func generateTestIdentity(t *testing.T) *identitytypes.Identity {
-	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatalf("Failed to generate private key: %v", err)
-	}
 
 	provider := providers.NewPublicKeyProvider()
-	identity, err := provider.CreateIdentity("test-id", privateKey)
+	identity, err := provider.CreateIdentity("test-id")
 	if err != nil {
 		t.Fatalf("Failed to create identity: %v", err)
 	}
