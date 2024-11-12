@@ -1,6 +1,7 @@
 package oplog
 
 import (
+	"bytes"
 	"testing"
 
 	"orbitdb/go-orbitdb/identities/identitytypes"
@@ -108,5 +109,58 @@ func TestEncode(t *testing.T) {
 	}
 	if len(encodedEntry.Bytes) == 0 {
 		t.Error("Expected encoded bytes to be non-empty")
+	}
+}
+
+func TestDecode(t *testing.T) {
+	// Create a sample entry
+	entry := Entry{
+		ID:        "entry-id",
+		Payload:   "payload-data",
+		Clock:     Clock{ID: "test-clock", Time: 1},
+		V:         2,
+		Key:       "test-key",
+		Identity:  "test-identity",
+		Signature: "test-signature",
+	}
+
+	// Encode the entry
+	encodedEntry := Encode(entry)
+
+	// Decode the encoded bytes back into an EncodedEntry
+	decodedEntry, err := Decode(encodedEntry.Bytes)
+	if err != nil {
+		t.Fatalf("Decode failed: %v", err)
+	}
+
+	// Verify that the decoded entry matches the original entry
+	if decodedEntry.Entry.ID != entry.ID {
+		t.Errorf("Expected ID %s, got %s", entry.ID, decodedEntry.Entry.ID)
+	}
+	if decodedEntry.Entry.Payload != entry.Payload {
+		t.Errorf("Expected Payload %s, got %s", entry.Payload, decodedEntry.Entry.Payload)
+	}
+	if decodedEntry.Entry.Clock.ID != entry.Clock.ID {
+		t.Errorf("Expected Clock ID %s, got %s", entry.Clock.ID, decodedEntry.Entry.Clock.ID)
+	}
+	if decodedEntry.Entry.Clock.Time != entry.Clock.Time {
+		t.Errorf("Expected Clock Time %d, got %d", entry.Clock.Time, decodedEntry.Entry.Clock.Time)
+	}
+	if decodedEntry.Entry.V != entry.V {
+		t.Errorf("Expected Version %d, got %d", entry.V, decodedEntry.Entry.V)
+	}
+	if decodedEntry.Entry.Key != entry.Key {
+		t.Errorf("Expected Key %s, got %s", entry.Key, decodedEntry.Entry.Key)
+	}
+	if decodedEntry.Entry.Identity != entry.Identity {
+		t.Errorf("Expected Identity %s, got %s", entry.Identity, decodedEntry.Entry.Identity)
+	}
+	if decodedEntry.Entry.Signature != entry.Signature {
+		t.Errorf("Expected Signature %s, got %s", entry.Signature, decodedEntry.Entry.Signature)
+	}
+
+	// Check that the CBOR bytes match between encoding and decoding
+	if !bytes.Equal(encodedEntry.Bytes, decodedEntry.Bytes) {
+		t.Errorf("Encoded bytes do not match decoded bytes")
 	}
 }
