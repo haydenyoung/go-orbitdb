@@ -24,5 +24,5 @@ func main() {
 	encodedEntry := oplog.Encode(entry)
 	fmt.Println("CID in Go:", encodedEntry.CID)
 	// Output the bytes in hex format for easy comparison
-	fmt.Println("CBOR Encoded Bytes in Go:", hex.EncodeToString(encodedEntry.Bytes.Bytes()))
+	fmt.Println("CBOR Encoded Bytes in Go:", hex.EncodeToString(encodedEntry.Bytes))
 }

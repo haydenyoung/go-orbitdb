@@ -2,8 +2,6 @@ package oplog
 
 import (
 	"bytes"
-	"encoding/hex"
-	"fmt"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/codec/dagcbor"
@@ -28,7 +26,7 @@ type Entry struct {
 
 type EncodedEntry struct {
 	Entry
-	Bytes bytes.Buffer
+	Bytes []byte
 	CID   cid.Cid
 	Hash  string
 }
@@ -72,7 +70,7 @@ func NewEntry(identity *identitytypes.Identity, id string, payload string, clock
 	encodedEntry := Encode(entry)
 
 	// Sign the encoded entry data
-	signature, err := identity.Sign(encodedEntry.Bytes.Bytes())
+	signature, err := identity.Sign(encodedEntry.Bytes)
 	if err != nil {
 		panic(err)
 	}
@@ -106,7 +104,7 @@ func VerifyEntrySignature(identity *identitytypes.Identity, entry EncodedEntry) 
 	reconstructedEncodedEntry := Encode(entryData)
 
 	// Use the provider to verify the signature on the reconstructed data
-	return identity.Verify(entry.Signature, reconstructedEncodedEntry.Bytes.Bytes())
+	return identity.Verify(entry.Signature, reconstructedEncodedEntry.Bytes)
 }
 
 // IsEntry checks if an object is a valid entry

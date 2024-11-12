@@ -4,7 +4,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"fmt"
 	"testing"
 
 	"orbitdb/go-orbitdb/identities/identitytypes"
@@ -90,9 +89,6 @@ func TestIsEqual(t *testing.T) {
 	entry1 := NewEntry(identity, "entry-id", "payload-data", clock, nil, nil)
 	entry2 := NewEntry(identity, "entry-id", "payload-data", clock, nil, nil)
 
-	fmt.Printf("Encoded bytes for entry1: %x\n", entry1.Bytes.Bytes())
-	fmt.Printf("Encoded bytes for entry2: %x\n", entry2.Bytes.Bytes())
-
 	// Both entries have identical content, so they should have the same serialized bytes
 	if !IsEqual(entry1, entry2) {
 		t.Error("Expected entries with identical content to be equal")
@@ -117,7 +113,7 @@ func TestEncode(t *testing.T) {
 	if encodedEntry.CID.String() == "" {
 		t.Error("Expected CID to be generated, but it was empty")
 	}
-	if encodedEntry.Bytes.Len() == 0 {
+	if len(encodedEntry.Bytes) == 0 {
 		t.Error("Expected encoded bytes to be non-empty")
 	}
 }
