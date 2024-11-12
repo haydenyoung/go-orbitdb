@@ -10,8 +10,8 @@ import (
 	"github.com/ipld/go-ipld-prime/node/bindnode"
 	"github.com/multiformats/go-multibase"
 	mh "github.com/multiformats/go-multihash"
-	"orbitdb/go-orbitdb/identities"
-	"orbitdb/go-orbitdb/identities/provider_registry"
+	"orbitdb/go-orbitdb/identities/identitytypes"
+	"sort"
 )
 
 type Entry struct {
@@ -38,26 +38,33 @@ func (e EncodedEntry) GetBase58CID() string {
 	return cidBase58
 }
 
-func NewEntry(identity *identities.Identity, id string, payload string, clock Clock) EncodedEntry {
+func NewEntry(identity *identitytypes.Identity, id string, payload string, clock Clock, next []string, refs []string) EncodedEntry {
 	if identity == nil {
 		panic("Identity is required, cannot create entry")
 	}
-	if id == "" {
-		panic("Entry requires an id")
+	if id == "" || payload == "" {
+		panic("Entry requires an id and payload")
 	}
-	if payload == "" {
-		panic("Entry requires a payload")
+	// Initialize next and refs as empty slices if nil
+	if next == nil {
+		next = []string{}
+	} else {
+		sort.Strings(next)
+	}
+	if refs == nil {
+		refs = []string{}
+	} else {
+		sort.Strings(refs)
 	}
 
+	// Create an entry without Key, Identity, and Signature
 	entry := Entry{
-		ID:       id,
-		Payload:  payload,
-		Clock:    clock,
-		V:        2,
-		Key:      identity.PublicKeyHex(), // Convert public key to hex string for storage
-		Identity: identity.Identity,       // Use the identity's identifier (hash)
-		Next:     []string{},              // Initialize Next as empty array
-		Refs:     []string{},              // Initialize Refs as empty array
+		ID:      id,
+		Payload: payload,
+		Next:    next,
+		Refs:    refs,
+		Clock:   clockOrDefault(clock, identity),
+		V:       2,
 	}
 
 	// Encode the entry to CBOR
@@ -69,25 +76,33 @@ func NewEntry(identity *identities.Identity, id string, payload string, clock Cl
 		panic(err)
 	}
 
-	// Set the signature in the encoded entry
-	encodedEntry.Entry.Signature = signature
+	// Now assign Key, Identity, and Signature fields
+	entry.Key = identity.PublicKey
+	entry.Identity = identity.Hash
+	entry.Signature = signature
 
-	return encodedEntry
+	// Re-encode the entry with the newly assigned fields
+	finalEncodedEntry := Encode(entry)
+	return finalEncodedEntry
 }
 
-func VerifyEntrySignature(identity *identities.Identity, entry EncodedEntry) bool {
-	// Retrieve the identity provider for the identity type
-	provider, err := provider_registry.GetIdentityProvider(identity.Type)
-	if err != nil {
-		return false // Provider not found or error retrieving it
+func VerifyEntrySignature(identity *identitytypes.Identity, entry EncodedEntry) bool {
+
+	// Recreate the entry data without Signature, Key, and Identity fields
+	entryData := Entry{
+		ID:      entry.ID,
+		Payload: entry.Payload,
+		Next:    entry.Next,
+		Refs:    entry.Refs,
+		Clock:   entry.Clock,
+		V:       entry.V,
 	}
 
-	// Use the provider to verify the identity by checking the entry's data and signature
-	valid, err := provider.VerifyIdentityWithEntry(identity, entry.Bytes.Bytes(), entry.Signature)
-	if err != nil {
-		return false
-	}
-	return valid
+	// Encode the entry data without the Key, Identity, and Signature fields
+	reconstructedEncodedEntry := Encode(entryData)
+
+	// Use the provider to verify the signature on the reconstructed data
+	return identity.Verify(entry.Signature, reconstructedEncodedEntry.Bytes.Bytes())
 }
 
 // IsEntry checks if an object is a valid entry
@@ -145,4 +160,12 @@ func Encode(entry Entry) EncodedEntry {
 
 	// Return the EncodedEntry with CID
 	return EncodedEntry{Entry: entry, Bytes: buf, CID: c}
+}
+
+// Helper function to set a default clock if not provided
+func clockOrDefault(clock Clock, identity *identitytypes.Identity) Clock {
+	if clock.ID == "" {
+		return Clock{ID: identity.PublicKey, Time: 1}
+	}
+	return clock
 }
