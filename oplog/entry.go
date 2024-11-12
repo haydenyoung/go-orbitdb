@@ -3,9 +3,8 @@ package oplog
 import (
 	"bytes"
 	"github.com/ipfs/go-cid"
-	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/codec/dagcbor"
-	"github.com/ipld/go-ipld-prime/node/bindnode"
+	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/multiformats/go-multibase"
 	mh "github.com/multiformats/go-multihash"
 	"orbitdb/go-orbitdb/identities/identitytypes"
@@ -13,15 +12,15 @@ import (
 )
 
 type Entry struct {
-	ID        string
-	Payload   string
-	Next      []string
-	Refs      []string
-	Clock     Clock
-	V         int
-	Key       string // Public key of the identity
-	Identity  string // Identity hash or identifier
-	Signature string // Signature of the entry
+	ID        string   `json:"id"`
+	Payload   string   `json:"payload"`
+	Next      []string `json:"next"`
+	Refs      []string `json:"refs"`
+	Clock     Clock    `json:"clock"`
+	V         int      `json:"v"`
+	Key       string   `json:"key"`
+	Identity  string   `json:"identity"`
+	Signature string   `json:"sig"`
 }
 
 type EncodedEntry struct {
@@ -119,34 +118,59 @@ func IsEqual(a EncodedEntry, b EncodedEntry) bool {
 
 // Encode encodes the entry into CBOR and returns an EncodedEntry
 func Encode(entry Entry) EncodedEntry {
-	// Define the schema for Entry, including the new fields
-	ts, err := ipld.LoadSchemaBytes([]byte(`
-		type Clock struct {
-			id String
-			time Int
-		} representation map
+	// Create a basic map node for encoding
+	nb := basicnode.Prototype__Map{}.NewBuilder()
+	ma, _ := nb.BeginMap(9)
 
-		type Entry struct {
-			id String
-			payload String
-			next [String]
-			refs [String]
-			clock Clock
-			v Int
-			key String
-			identity String
-			sig String
-		} representation map
-	`))
-	if err != nil {
-		panic(err)
+	// Assemble each field
+	ma.AssembleKey().AssignString("id")
+	ma.AssembleValue().AssignString(entry.ID)
+
+	ma.AssembleKey().AssignString("payload")
+	ma.AssembleValue().AssignString(entry.Payload)
+
+	ma.AssembleKey().AssignString("next")
+	na, _ := ma.AssembleValue().BeginList(int64(len(entry.Next)))
+	for _, n := range entry.Next {
+		na.AssembleValue().AssignString(n)
 	}
+	na.Finish()
 
-	schemaType := ts.TypeByName("Entry")
-	node := bindnode.Wrap(&entry, schemaType)
+	ma.AssembleKey().AssignString("refs")
+	ra, _ := ma.AssembleValue().BeginList(int64(len(entry.Refs)))
+	for _, r := range entry.Refs {
+		ra.AssembleValue().AssignString(r)
+	}
+	ra.Finish()
 
+	ma.AssembleKey().AssignString("clock")
+	ca, _ := ma.AssembleValue().BeginMap(2)
+	ca.AssembleKey().AssignString("id")
+	ca.AssembleValue().AssignString(entry.Clock.ID)
+	ca.AssembleKey().AssignString("time")
+	ca.AssembleValue().AssignInt(int64(entry.Clock.Time))
+	ca.Finish()
+
+	ma.AssembleKey().AssignString("v")
+	ma.AssembleValue().AssignInt(int64(entry.V))
+
+	ma.AssembleKey().AssignString("key")
+	ma.AssembleValue().AssignString(entry.Key)
+
+	ma.AssembleKey().AssignString("identity")
+	ma.AssembleValue().AssignString(entry.Identity)
+
+	ma.AssembleKey().AssignString("sig")
+	ma.AssembleValue().AssignString(entry.Signature)
+
+	ma.Finish()
+
+	// Get the final built node
+	node := nb.Build()
+
+	// Encode to CBOR
 	var buf bytes.Buffer
-	if err := dagcbor.Encode(node.Representation(), &buf); err != nil {
+	if err := dagcbor.Encode(node, &buf); err != nil {
 		panic(err)
 	}
 
@@ -164,6 +188,93 @@ func Encode(entry Entry) EncodedEntry {
 	}
 
 	return EncodedEntry{Entry: entry, Bytes: buf.Bytes(), CID: c, Hash: hashStr}
+}
+
+// Decode decodes CBOR-encoded data into an EncodedEntry struct
+func Decode(encodedData []byte) (EncodedEntry, error) {
+	// Create a node prototype for decoding
+	nb := basicnode.Prototype__Map{}.NewBuilder()
+	buf := bytes.NewReader(encodedData)
+
+	// Decode the CBOR data
+	if err := dagcbor.Decode(nb, buf); err != nil {
+		return EncodedEntry{}, err
+	}
+	node := nb.Build()
+
+	// Extract values from the node
+	entry := Entry{}
+	if idNode, err := node.LookupByString("id"); err == nil {
+		id, _ := idNode.AsString()
+		entry.ID = id
+	}
+	if payloadNode, err := node.LookupByString("payload"); err == nil {
+		payload, _ := payloadNode.AsString()
+		entry.Payload = payload
+	}
+	if vNode, err := node.LookupByString("v"); err == nil {
+		v, _ := vNode.AsInt()
+		entry.V = int(v) // Cast int64 to int
+	}
+	if keyNode, err := node.LookupByString("key"); err == nil {
+		key, _ := keyNode.AsString()
+		entry.Key = key
+	}
+	if identityNode, err := node.LookupByString("identity"); err == nil {
+		identity, _ := identityNode.AsString()
+		entry.Identity = identity
+	}
+	if sigNode, err := node.LookupByString("sig"); err == nil {
+		sig, _ := sigNode.AsString()
+		entry.Signature = sig
+	}
+
+	// Decode nested Clock
+	if clockNode, err := node.LookupByString("clock"); err == nil {
+		clock := Clock{}
+		if clockIDNode, err := clockNode.LookupByString("id"); err == nil {
+			clockID, _ := clockIDNode.AsString()
+			clock.ID = clockID
+		}
+		if clockTimeNode, err := clockNode.LookupByString("time"); err == nil {
+			clockTime, _ := clockTimeNode.AsInt()
+			clock.Time = int(clockTime) // Cast int64 to int
+		}
+		entry.Clock = clock
+	}
+
+	// Decode lists (Next and Refs)
+	if nextNode, err := node.LookupByString("next"); err == nil {
+		nextLen := nextNode.Length()
+		for i := int64(0); i < nextLen; i++ {
+			nNode, _ := nextNode.LookupByIndex(i)
+			n, _ := nNode.AsString()
+			entry.Next = append(entry.Next, n)
+		}
+	}
+	if refsNode, err := node.LookupByString("refs"); err == nil {
+		refsLen := refsNode.Length()
+		for i := int64(0); i < refsLen; i++ {
+			rNode, _ := refsNode.LookupByIndex(i)
+			r, _ := rNode.AsString()
+			entry.Refs = append(entry.Refs, r)
+		}
+	}
+
+	// Calculate the CID for CBOR-encoded bytes
+	hash, err := mh.Sum(encodedData, mh.SHA2_256, -1)
+	if err != nil {
+		return EncodedEntry{}, err
+	}
+	c := cid.NewCidV1(cid.DagCBOR, hash)
+	hashStr, _ := c.StringOfBase(multibase.Base58BTC)
+
+	return EncodedEntry{
+		Entry: entry,
+		Bytes: encodedData,
+		CID:   c,
+		Hash:  hashStr,
+	}, nil
 }
 
 // Helper function to set a default clock if not provided
