@@ -90,6 +90,17 @@ func VerifyEntrySignature(identity *identities.Identity, entry EncodedEntry) boo
 	return valid
 }
 
+// IsEntry checks if an object is a valid entry
+func IsEntry(entry Entry) bool {
+	return entry.ID != "" && entry.Payload != "" && entry.Clock.ID != "" && entry.Clock.Time > 0
+}
+
+// IsEqual checks if two entries are equal based on their hash values
+func IsEqual(a EncodedEntry, b EncodedEntry) bool {
+	return bytes.Equal(a.Bytes.Bytes(), b.Bytes.Bytes())
+}
+
+// Encode encodes the entry into CBOR and returns an EncodedEntry
 func Encode(entry Entry) EncodedEntry {
 	// Define the schema for Entry, including the new fields
 	ts, err := ipld.LoadSchemaBytes([]byte(`
