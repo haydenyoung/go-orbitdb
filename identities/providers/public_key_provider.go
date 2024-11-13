@@ -79,3 +79,16 @@ func (p *PublicKeyProvider) VerifyIdentity(identity *identitytypes.Identity, sig
 func NewPublicKeyProvider() *PublicKeyProvider {
 	return &PublicKeyProvider{}
 }
+
+func signData(privateKey *ecdsa.PrivateKey, data []byte) (string, error) {
+	// Hash the data to create a deterministic signature
+	hash := sha256.Sum256(data)
+
+	r, s, err := ecdsa.Sign(rand.Reader, privateKey, hash[:])
+	if err != nil {
+		return "", err
+	}
+
+	// Encode the signature as a hex string
+	return hex.EncodeToString(r.Bytes()) + hex.EncodeToString(s.Bytes()), nil
+}
