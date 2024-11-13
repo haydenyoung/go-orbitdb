@@ -9,7 +9,7 @@ import (
 type Provider interface {
 	Type() string
 	CreateIdentity(id string) (*identitytypes.Identity, error)
-	VerifyIdentity(identity *identitytypes.Identity, signature string, data []byte) bool
+	VerifyIdentity(identity *identitytypes.Identity) (bool, error)
 }
 
 // providerRegistry stores available providers.
