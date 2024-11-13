@@ -36,36 +36,6 @@ type EncodedIdentity struct {
 	Hash     string
 }
 
-// NewIdentity generates a new Identity instance with a random ECDSA key pair.
-func NewIdentity(id string, privateKey *ecdsa.PrivateKey, idType string) (*Identity, error) {
-	if id == "" {
-		return nil, errors.New("identity ID is required")
-	}
-	if idType == "" {
-		return nil, errors.New("identity type is required")
-	}
-
-	publicKey := hex.EncodeToString(append(privateKey.PublicKey.X.Bytes(), privateKey.PublicKey.Y.Bytes()...))
-
-	identity := &Identity{
-		ID:         id,
-		PublicKey:  publicKey,
-		PrivateKey: privateKey,
-		Signatures: make(map[string]string),
-		Type:       idType, // Set the type here
-	}
-
-	// Encode the identity to generate hash and bytes representation
-	hash, bytes, err := EncodeIdentity(*identity)
-	if err != nil {
-		return nil, err
-	}
-	identity.Hash = hash
-	identity.Bytes = bytes
-
-	return identity, nil
-}
-
 // Sign generates a signature for the provided data using the private key.
 func (i *Identity) Sign(data []byte) (string, error) {
 	// Hash the data
