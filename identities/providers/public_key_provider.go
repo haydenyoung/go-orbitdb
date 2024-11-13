@@ -95,6 +95,13 @@ func (p *PublicKeyProvider) VerifyIdentity(identity *identitytypes.Identity) (bo
 	return true, nil
 }
 
+// GetId retrieves or generates an ID based on the identity's public key.
+func (p *PublicKeyProvider) GetId(id string) (string, error) {
+	privateKey := createHardcodedKeyPair() // Replace with keystore logic in the future
+	publicKey := append(privateKey.PublicKey.X.Bytes(), privateKey.PublicKey.Y.Bytes()...)
+	return hex.EncodeToString(publicKey), nil
+}
+
 // Sign signs data using the identity's private key.
 func (p *PublicKeyProvider) Sign(data string, identity *identitytypes.Identity) (string, error) {
 	return identity.Sign([]byte(data))
