@@ -4,12 +4,13 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"github.com/fxamacker/cbor/v2"
 	"testing"
 )
 
 func TestNewIdentity(t *testing.T) {
 	privateKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	identity, err := NewIdentity("test-id", privateKey)
+	identity, err := NewIdentity("test-id", privateKey, "orbitdb")
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -29,7 +30,7 @@ func TestNewIdentity(t *testing.T) {
 
 func TestSign(t *testing.T) {
 	privateKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	identity, _ := NewIdentity("test-id", privateKey)
+	identity, _ := NewIdentity("test-id", privateKey, "orbitdb")
 	data := []byte("data to sign")
 
 	signature, err := identity.Sign(data)
@@ -44,7 +45,7 @@ func TestSign(t *testing.T) {
 
 func TestVerify(t *testing.T) {
 	privateKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	identity, _ := NewIdentity("test-id", privateKey)
+	identity, _ := NewIdentity("test-id", privateKey, "orbitdb")
 	data := []byte("data to sign")
 	signature, _ := identity.Sign(data)
 
