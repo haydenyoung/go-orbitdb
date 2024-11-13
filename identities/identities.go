@@ -1,7 +1,8 @@
 package identities
 
 import (
-	"orbitdb/go-orbitdb/identities/identitytypes" // Updated import path
+	"errors"
+	"orbitdb/go-orbitdb/identities/identitytypes"
 	"orbitdb/go-orbitdb/identities/providers"
 )
 
@@ -40,9 +41,10 @@ func (ids *Identities) CreateIdentity(id string) (*identitytypes.Identity, error
 	return identity, nil
 }
 
-// VerifyIdentity verifies the authenticity of the provided identity.
-func (ids *Identities) VerifyIdentity(identity *identitytypes.Identity, signature string, data []byte) bool {
-	return ids.provider.VerifyIdentity(identity, signature, data)
+// VerifyIdentity verifies the provided identity.
+func (ids *Identities) VerifyIdentity(identity *identitytypes.Identity) bool {
+	verified, _ := ids.provider.VerifyIdentity(identity)
+	return verified
 }
 
 // Sign signs the provided data using the identity's private key.
