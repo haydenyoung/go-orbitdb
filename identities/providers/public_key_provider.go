@@ -3,8 +3,10 @@ package providers
 import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"math/big"
 	"orbitdb/go-orbitdb/identities/identitytypes"
 )
