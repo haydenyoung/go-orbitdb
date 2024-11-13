@@ -35,17 +35,39 @@ func (p *PublicKeyProvider) CreateIdentity(id string) (*identitytypes.Identity, 
 	// Convert the public key to a hex string
 	publicKey := hex.EncodeToString(append(privateKey.PublicKey.X.Bytes(), privateKey.PublicKey.Y.Bytes()...))
 
-	// Hash the ID and public key to create a unique identity hash
-	hash := sha256.Sum256([]byte(id + publicKey))
-	identityHash := hex.EncodeToString(hash[:])
+	// Sign the ID to create a valid `idSignature`
+	idSignature, err := signData(privateKey, []byte(id))
+	if err != nil {
+		return nil, err
+	}
 
-	// Create and return the identity with the calculated hash
-	return &identitytypes.Identity{
+	// Sign the public key to create a valid `publicKeySignature`
+	publicKeySignature, err := signData(privateKey, []byte(publicKey))
+	if err != nil {
+		return nil, err
+	}
+
+	// Create the identity instance with Type set to "publickey" and dummy signatures
+	identity := &identitytypes.Identity{
 		ID:         id,
 		PublicKey:  publicKey,
 		PrivateKey: privateKey,
-		Hash:       identityHash,
-	}, nil
+		Signatures: map[string]string{
+			"id":        idSignature,
+			"publicKey": publicKeySignature,
+		},
+		Type: p.Type(),
+	}
+
+	// Encode identity to generate hash and bytes representation
+	hash, bytes, err := identitytypes.EncodeIdentity(*identity)
+	if err != nil {
+		return nil, err
+	}
+	identity.Hash = hash
+	identity.Bytes = bytes
+
+	return identity, nil
 }
 
 // VerifyIdentity verifies the identity signature.
