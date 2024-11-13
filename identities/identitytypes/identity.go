@@ -1,11 +1,19 @@
 package identitytypes
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
+	"github.com/ipfs/go-cid"
+	"github.com/ipld/go-ipld-prime"
+	"github.com/ipld/go-ipld-prime/codec/dagcbor"
+	"github.com/ipld/go-ipld-prime/node/basicnode"
+	"github.com/multiformats/go-multibase"
+	mh "github.com/multiformats/go-multihash"
 	"math/big"
 )
 
@@ -135,4 +143,135 @@ func IsEqual(a, b *Identity) bool {
 	}
 
 	return equal
+}
+
+// EncodeIdentity encodes an Identity instance into CBOR format and returns hash, bytes, and error.
+func EncodeIdentity(identity Identity) (string, []byte, error) {
+	// Initialize a basic map node for encoding with canonical field order
+	nb := basicnode.Prototype__Map{}.NewBuilder()
+	ma, _ := nb.BeginMap(4)
+
+	// Assemble fields in a consistent order
+	ma.AssembleKey().AssignString("id")
+	ma.AssembleValue().AssignString(identity.ID)
+
+	ma.AssembleKey().AssignString("publicKey")
+	ma.AssembleValue().AssignString(identity.PublicKey)
+
+	ma.AssembleKey().AssignString("signatures")
+	sigMap, _ := ma.AssembleValue().BeginMap(int64(len(identity.Signatures)))
+	for k, v := range identity.Signatures {
+		sigMap.AssembleKey().AssignString(k)
+		sigMap.AssembleValue().AssignString(v)
+	}
+	sigMap.Finish()
+
+	ma.AssembleKey().AssignString("type")
+	ma.AssembleValue().AssignString(identity.Type)
+
+	ma.Finish()
+
+	// Build the node and encode to CBOR
+	node := nb.Build()
+	var buf bytes.Buffer
+	if err := dagcbor.Encode(node, &buf); err != nil {
+		return "", nil, err
+	}
+
+	// Calculate CID for CBOR-encoded bytes
+	hash, err := mh.Sum(buf.Bytes(), mh.SHA2_256, -1)
+	if err != nil {
+		return "", nil, err
+	}
+	c := cid.NewCidV1(cid.DagCBOR, hash)
+
+	// Encode CID to base58btc for hash string
+	hashStr, err := c.StringOfBase(multibase.Base58BTC)
+	if err != nil {
+		return "", nil, err
+	}
+
+	return hashStr, buf.Bytes(), nil
+}
+
+// DecodeIdentity decodes CBOR-encoded bytes back into an Identity struct.
+func DecodeIdentity(encodedData []byte) (*Identity, error) {
+	// Check if the encodedData is empty
+	if len(encodedData) == 0 {
+		return nil, errors.New("invalid or empty input data")
+	}
+
+	// Create a node for decoding
+	nb := basicnode.Prototype__Map{}.NewBuilder()
+	buf := bytes.NewReader(encodedData)
+
+	// Decode CBOR data
+	if err := dagcbor.Decode(nb, buf); err != nil {
+		return nil, err
+	}
+	node := nb.Build()
+
+	// Extract fields to reconstruct the Identity
+	identity := Identity{}
+
+	// Validate and set 'id' field
+	if idNode, err := node.LookupByString("id"); err == nil {
+		id, err := idNode.AsString()
+		if err != nil || id == "" {
+			return nil, errors.New("invalid or missing 'id' field")
+		}
+		identity.ID = id
+	} else {
+		return nil, errors.New("invalid or missing 'id' field")
+	}
+
+	// Validate and set 'publicKey' field
+	if publicKeyNode, err := node.LookupByString("publicKey"); err == nil {
+		publicKey, err := publicKeyNode.AsString()
+		if err != nil || publicKey == "" {
+			return nil, errors.New("invalid or missing 'publicKey' field")
+		}
+		identity.PublicKey = publicKey
+	} else {
+		return nil, errors.New("invalid or missing 'publicKey' field")
+	}
+
+	// Validate and set 'signatures' field as a map
+	if sigNode, err := node.LookupByString("signatures"); err == nil {
+		if sigNode.Kind() != ipld.Kind_Map {
+			return nil, errors.New("invalid or missing 'signatures' field")
+		}
+		sigMap := make(map[string]string)
+
+		// Iterate over map keys to ensure each signature is a string
+		iter := sigNode.MapIterator()
+		for !iter.Done() {
+			keyNode, valueNode, _ := iter.Next()
+			key, err := keyNode.AsString()
+			if err != nil {
+				return nil, errors.New("invalid key format in 'signatures'")
+			}
+			val, err := valueNode.AsString()
+			if err != nil {
+				return nil, errors.New("invalid signature format")
+			}
+			sigMap[key] = val
+		}
+		identity.Signatures = sigMap
+	} else {
+		return nil, errors.New("invalid or missing 'signatures' field")
+	}
+
+	// Validate and set 'type' field
+	if typeNode, err := node.LookupByString("type"); err == nil {
+		identityType, err := typeNode.AsString()
+		if err != nil || identityType == "" {
+			return nil, errors.New("invalid or missing 'type' field")
+		}
+		identity.Type = identityType
+	} else {
+		return nil, errors.New("invalid or missing 'type' field")
+	}
+
+	return &identity, nil
 }
