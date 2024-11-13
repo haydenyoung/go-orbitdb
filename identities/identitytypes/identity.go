@@ -243,5 +243,9 @@ func DecodeIdentity(encodedData []byte) (*Identity, error) {
 		return nil, errors.New("invalid or missing 'type' field")
 	}
 
+	hash, encodedBytes, _ := EncodeIdentity(identity)
+	identity.Hash = hash
+	identity.Bytes = encodedBytes
+
 	return &identity, nil
 }
