@@ -88,3 +88,51 @@ func (i *Identity) Verify(signatureHex string, data []byte) bool {
 	// Verify the signature
 	return ecdsa.Verify(&i.PrivateKey.PublicKey, hashedData[:], r, s)
 }
+
+// IsIdentity Checks if an identity has all required fields populated.
+func IsIdentity(identity *Identity) bool {
+	return identity != nil &&
+		identity.ID != "" &&
+		identity.Hash != "" &&
+		identity.Bytes != nil &&
+		identity.PublicKey != "" &&
+		identity.Signatures != nil &&
+		identity.Signatures["id"] != "" &&
+		identity.Signatures["publicKey"] != "" &&
+		identity.Type != ""
+}
+
+// IsEqual Checks if two identities are identical based on key properties.
+func IsEqual(a, b *Identity) bool {
+	if a == nil || b == nil {
+		fmt.Println("One of the identities is nil.")
+		return false
+	}
+
+	equal := true
+
+	if a.ID != b.ID {
+		fmt.Printf("IDs are not equal: a.ID = %v, b.ID = %v\n", a.ID, b.ID)
+		equal = false
+	}
+
+	if a.PublicKey != b.PublicKey {
+		fmt.Printf("Public keys are not equal: a.PublicKey = %v, b.PublicKey = %v\n", a.PublicKey, b.PublicKey)
+		equal = false
+	}
+	if a.Signatures["id"] != b.Signatures["id"] {
+		fmt.Printf("Signatures for 'id' are not equal: a.Signatures[\"id\"] = %v, b.Signatures[\"id\"] = %v\n", a.Signatures["id"], b.Signatures["id"])
+		equal = false
+	}
+	if a.Signatures["publicKey"] != b.Signatures["publicKey"] {
+		fmt.Printf("Signatures for 'publicKey' are not equal: a.Signatures[\"publicKey\"] = %v, b.Signatures[\"publicKey\"] = %v\n", a.Signatures["publicKey"], b.Signatures["publicKey"])
+		equal = false
+	}
+
+	if a.Hash != b.Hash {
+		fmt.Printf("Hashes are not equal: a.Hash = %v, b.Hash = %v\n", a.Hash, b.Hash)
+		equal = false
+	}
+
+	return equal
+}
