@@ -70,8 +70,13 @@ func (p *PublicKeyProvider) CreateIdentity(id string) (*identitytypes.Identity, 
 	return identity, nil
 }
 
-// VerifyIdentity verifies the identity signature.
-func (p *PublicKeyProvider) VerifyIdentity(identity *identitytypes.Identity, signature string, data []byte) bool {
+// Sign signs data using the identity's private key.
+func (p *PublicKeyProvider) Sign(data string, identity *identitytypes.Identity) (string, error) {
+	return identity.Sign([]byte(data))
+}
+
+// Verify verifies the identity signature.
+func (p *PublicKeyProvider) Verify(identity *identitytypes.Identity, signature string, data []byte) bool {
 	return identity.Verify(signature, data)
 }
 
