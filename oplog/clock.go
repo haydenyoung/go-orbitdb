@@ -1,21 +1,23 @@
 package oplog
 
 type Clock struct {
-	id   string
-	time int
+	ID   string `json:"id"`
+	Time int    `json:"time"`
 }
 
-func NewClock(id string, time int) *Clock {
-	c := Clock{id: id, time: time}
-	return &c
+func NewClock(id string, time int) Clock {
+	return Clock{
+		ID:   id,
+		Time: time,
+	}
 }
 
 func CompareClocks(a Clock, b Clock) (res int) {
-	dist := a.time - b.time
+	dist := a.Time - b.Time
 	res = dist
 
-	if dist == 0 && a.id != b.id {
-		if a.id < b.id {
+	if dist == 0 && a.ID != b.ID {
+		if a.ID < b.ID {
 			res = -1
 		} else {
 			res = 1
@@ -26,5 +28,9 @@ func CompareClocks(a Clock, b Clock) (res int) {
 }
 
 func TickClock(c Clock) Clock {
-	return Clock{id: c.id, time: c.time + 1}
+	return Clock{ID: c.ID, Time: c.Time + 1}
+}
+
+func (c *Clock) Tick() {
+	c.Time += 1
 }

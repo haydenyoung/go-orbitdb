@@ -2,138 +2,165 @@ package oplog
 
 import (
 	"bytes"
-	"orbitdb/go-orbitdb/identities"
-	"orbitdb/go-orbitdb/identities/provider_registry"
-	"orbitdb/go-orbitdb/identities/providers"
 	"testing"
+
+	"orbitdb/go-orbitdb/identities/identitytypes"
+	"orbitdb/go-orbitdb/identities/providers"
 )
 
-func TestNewEntry(t *testing.T) {
-	// Register the PublicKeyIdentityProvider if not already registered
-	err := provider_registry.UseIdentityProvider(providers.NewPublicKeyIdentityProvider())
-	if err != nil && err.Error() != "identity provider already registered" {
-		t.Fatalf("Failed to register identity provider: %v", err)
-	}
+func generateTestIdentity(t *testing.T) *identitytypes.Identity {
 
-	// Create an identity for the entry
-	identity, err := identities.NewIdentity()
+	provider := providers.NewPublicKeyProvider()
+	identity, err := provider.CreateIdentity("test-id")
 	if err != nil {
 		t.Fatalf("Failed to create identity: %v", err)
 	}
 
-	// Create an ID and a Clock for the entry
-	id := "test-log-id"
-	clock := NewClock("test-id", 1)
+	return identity
+}
 
-	// Create a new entry with an identity, id, clock, and sample payload
-	payload := "some entry"
-	e := NewEntry(identity, id, payload, *clock)
+func TestNewEntry(t *testing.T) {
+	identity := generateTestIdentity(t)
+	clock := Clock{ID: "test-clock", Time: 1}
+	entry := NewEntry(identity, "entry-id", "payload-data", clock, nil, nil)
 
-	// Check if the ID is correctly set
-	if e.ID != id {
-		t.Errorf("Expected ID %s, got %s", id, e.ID)
+	if entry.ID != "entry-id" {
+		t.Errorf("Expected entry ID to be 'entry-id', got '%s'", entry.ID)
+	}
+	if entry.Payload != "payload-data" {
+		t.Errorf("Expected payload to be 'payload-data', got '%s'", entry.Payload)
+	}
+	if entry.Key != identity.PublicKey {
+		t.Errorf("Expected entry Key to be '%s', got '%s'", identity.PublicKey, entry.Key)
+	}
+	if entry.Identity != identity.Hash {
+		t.Errorf("Expected entry Identity to be '%s', got '%s'", identity.Hash, entry.Identity)
+	}
+	if entry.Signature == "" {
+		t.Error("Expected entry Signature to be populated, but it was empty")
+	}
+}
+
+func TestVerifyEntrySignature(t *testing.T) {
+	identity := generateTestIdentity(t)
+	clock := Clock{ID: "test-clock", Time: 1}
+	entry := NewEntry(identity, "entry-id", "payload-data", clock, nil, nil)
+
+	isValid := VerifyEntrySignature(identity, entry)
+	if !isValid {
+		t.Error("Expected signature to be valid, but verification failed")
 	}
 
-	// Check if the payload is correctly set
-	if e.Payload != payload {
-		t.Errorf("Expected Payload %s, got %s", payload, e.Payload)
+	// Modify the payload and check that the signature verification fails
+	entry.Payload = "tampered-payload"
+	isValid = VerifyEntrySignature(identity, entry)
+	if isValid {
+		t.Error("Expected signature verification to fail for tampered entry, but it succeeded")
+	}
+}
+
+func TestIsEntry(t *testing.T) {
+	validEntry := Entry{
+		ID:      "entry-id",
+		Payload: "payload-data",
+		Clock:   Clock{ID: "test-clock", Time: 1},
 	}
 
-	// Check if the clock is correctly set
-	if e.Clock.id != clock.id || e.Clock.time != clock.time {
-		t.Errorf("Expected Clock %v, got %v", clock, e.Clock)
+	if !IsEntry(validEntry) {
+		t.Error("Expected IsEntry to return true for valid entry")
 	}
 
-	// Check if the version is set to 2
-	if e.V != 2 {
-		t.Errorf("Expected version 2, got %d", e.V)
+	invalidEntry := Entry{} // Empty fields
+	if IsEntry(invalidEntry) {
+		t.Error("Expected IsEntry to return false for invalid entry")
+	}
+}
+
+func TestIsEqual(t *testing.T) {
+	identity := generateTestIdentity(t)
+	clock := Clock{ID: "test-clock", Time: 1}
+
+	entry1 := NewEntry(identity, "entry-id", "payload-data", clock, nil, nil)
+	entry2 := NewEntry(identity, "entry-id", "payload-data", clock, nil, nil)
+
+	// Both entries have identical content, so they should have the same serialized bytes
+	if !IsEqual(entry1, entry2) {
+		t.Error("Expected entries with identical content to be equal")
 	}
 
-	// Check if the key (public key) is correctly set
-	expectedKey := identity.PublicKeyHex()
-	if e.Key != expectedKey {
-		t.Errorf("Expected Key %s, got %s", expectedKey, e.Key)
-	}
-
-	// Check if the identity field matches the identity's identifier
-	if e.Identity != identity.Identity {
-		t.Errorf("Expected Identity %s, got %s", identity.Identity, e.Identity)
-	}
-
-	// Verify that the entry signature is non-empty
-	if e.Signature == "" {
-		t.Error("Expected non-empty signature")
-	}
-
-	// Verify the signature is valid
-	if !VerifyEntrySignature(identity, e) {
-		t.Error("Signature verification failed")
-	}
-
-	// Check if the CBOR bytes are non-empty
-	if e.Bytes.Len() == 0 {
-		t.Error("Expected non-empty Bytes buffer after encoding")
-	}
-
-	// Verify the CID is valid and non-empty
-	if e.CID.String() == "" {
-		t.Error("Expected a valid CID, but got an empty string")
+	// Create an entry with different content and check equality
+	entry3 := NewEntry(identity, "entry-id", "different-payload", clock, nil, nil)
+	if IsEqual(entry1, entry3) {
+		t.Error("Expected entries with different content to not be equal")
 	}
 }
 
 func TestEncode(t *testing.T) {
-	// Create an identity for the entry
-	identity, err := identities.NewIdentity()
-	if err != nil {
-		t.Fatalf("Failed to create identity: %v", err)
+	entry := Entry{
+		ID:      "entry-id",
+		Payload: "payload-data",
+		Clock:   Clock{ID: "test-clock", Time: 1},
 	}
 
-	// Create an entry to test encoding with id, payload, clock, key, and identity
-	id := "test-log-id"
-	payload := "test payload"
-	clock := NewClock("test-id", 1)
+	encodedEntry := Encode(entry)
+
+	if encodedEntry.CID.String() == "" {
+		t.Error("Expected CID to be generated, but it was empty")
+	}
+	if len(encodedEntry.Bytes) == 0 {
+		t.Error("Expected encoded bytes to be non-empty")
+	}
+}
+
+func TestDecode(t *testing.T) {
+	// Create a sample entry
 	entry := Entry{
-		ID:       id,
-		Payload:  payload,
-		Clock:    *clock,
-		V:        2,
-		Key:      identity.PublicKeyHex(),
-		Identity: identity.Identity,
+		ID:        "entry-id",
+		Payload:   "payload-data",
+		Clock:     Clock{ID: "test-clock", Time: 1},
+		V:         2,
+		Key:       "test-key",
+		Identity:  "test-identity",
+		Signature: "test-signature",
 	}
 
 	// Encode the entry
 	encodedEntry := Encode(entry)
 
-	// Verify the CBOR-encoded bytes
-	var expectedBytes bytes.Buffer
-	expectedBytes.Write(encodedEntry.Bytes.Bytes())
-
-	if !bytes.Equal(encodedEntry.Bytes.Bytes(), expectedBytes.Bytes()) {
-		t.Error("Encoded bytes do not match expected output")
+	// Decode the encoded bytes back into an EncodedEntry
+	decodedEntry, err := Decode(encodedEntry.Bytes)
+	if err != nil {
+		t.Fatalf("Decode failed: %v", err)
 	}
 
-	// Verify CID generation
-	if encodedEntry.CID.String() == "" {
-		t.Error("Expected a valid CID, but got an empty string")
+	// Verify that the decoded entry matches the original entry
+	if decodedEntry.Entry.ID != entry.ID {
+		t.Errorf("Expected ID %s, got %s", entry.ID, decodedEntry.Entry.ID)
+	}
+	if decodedEntry.Entry.Payload != entry.Payload {
+		t.Errorf("Expected Payload %s, got %s", entry.Payload, decodedEntry.Entry.Payload)
+	}
+	if decodedEntry.Entry.Clock.ID != entry.Clock.ID {
+		t.Errorf("Expected Clock ID %s, got %s", entry.Clock.ID, decodedEntry.Entry.Clock.ID)
+	}
+	if decodedEntry.Entry.Clock.Time != entry.Clock.Time {
+		t.Errorf("Expected Clock Time %d, got %d", entry.Clock.Time, decodedEntry.Entry.Clock.Time)
+	}
+	if decodedEntry.Entry.V != entry.V {
+		t.Errorf("Expected Version %d, got %d", entry.V, decodedEntry.Entry.V)
+	}
+	if decodedEntry.Entry.Key != entry.Key {
+		t.Errorf("Expected Key %s, got %s", entry.Key, decodedEntry.Entry.Key)
+	}
+	if decodedEntry.Entry.Identity != entry.Identity {
+		t.Errorf("Expected Identity %s, got %s", entry.Identity, decodedEntry.Entry.Identity)
+	}
+	if decodedEntry.Entry.Signature != entry.Signature {
+		t.Errorf("Expected Signature %s, got %s", entry.Signature, decodedEntry.Entry.Signature)
 	}
 
-	// Check if the ID is correctly encoded
-	if encodedEntry.ID != id {
-		t.Errorf("Expected ID %s, got %s", id, encodedEntry.ID)
-	}
-
-	// Check if the version is correctly encoded as 2
-	if encodedEntry.V != 2 {
-		t.Errorf("Expected version 2, got %d", encodedEntry.V)
-	}
-
-	// Check if the key (public key) is correctly encoded
-	if encodedEntry.Key != identity.PublicKeyHex() {
-		t.Errorf("Expected Key %s, got %s", identity.PublicKeyHex(), encodedEntry.Key)
-	}
-
-	// Check if the identity field matches the identity's identifier
-	if encodedEntry.Identity != identity.Identity {
-		t.Errorf("Expected Identity %s, got %s", identity.Identity, encodedEntry.Identity)
+	// Check that the CBOR bytes match between encoding and decoding
+	if !bytes.Equal(encodedEntry.Bytes, decodedEntry.Bytes) {
+		t.Errorf("Encoded bytes do not match decoded bytes")
 	}
 }
