@@ -70,6 +70,31 @@ func (p *PublicKeyProvider) CreateIdentity(id string) (*identitytypes.Identity, 
 	return identity, nil
 }
 
+// VerifyIdentity checks and verifies the given identity, ensuring it has all required fields
+// and that the signatures are valid.
+func (p *PublicKeyProvider) VerifyIdentity(identity *identitytypes.Identity) (bool, error) {
+	// Check that the identity has all necessary fields populated
+	if !identitytypes.IsIdentity(identity) {
+		return false, errors.New("identity is missing required fields")
+	}
+
+	// Verify the ID signature
+	idSignature, hasIdSig := identity.Signatures["id"]
+	if !hasIdSig || !p.Verify(identity, idSignature, []byte(identity.ID)) {
+		return false, errors.New("invalid or missing ID signature")
+	}
+
+	// Verify the public key signature
+	publicKeySignature, hasPubKeySig := identity.Signatures["publicKey"]
+	if !hasPubKeySig || !p.Verify(identity, publicKeySignature, []byte(identity.PublicKey)) {
+		return false, errors.New("invalid or missing public key signature")
+	}
+
+	// Additional validation can be added here if needed
+
+	return true, nil
+}
+
 // Sign signs data using the identity's private key.
 func (p *PublicKeyProvider) Sign(data string, identity *identitytypes.Identity) (string, error) {
 	return identity.Sign([]byte(data))
