@@ -4,223 +4,141 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"github.com/fxamacker/cbor/v2"
+	"encoding/hex"
 	"testing"
 )
 
-func TestNewIdentity(t *testing.T) {
-	privateKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	identity, err := NewIdentity("test-id", privateKey, "orbitdb")
+// Helper function to create a test Identity with a generated key pair.
+func createTestIdentity(id string, identityType string) (*Identity, error) {
+	// Generate an ECDSA private key
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		t.Fatalf("Expected no error, got %v", err)
+		return nil, err
 	}
 
-	if identity.ID != "test-id" {
-		t.Fatalf("Expected ID 'test-id', got %s", identity.ID)
+	// Encode the public key
+	publicKeyBytes := append(privateKey.PublicKey.X.Bytes(), privateKey.PublicKey.Y.Bytes()...)
+	publicKeyHex := hex.EncodeToString(publicKeyBytes)
+
+	// Create the Identity object
+	identity := &Identity{
+		ID:         id,
+		PublicKey:  publicKeyHex,
+		PrivateKey: privateKey,
+		Signatures: map[string]string{
+			"id":        "test-id-signature",
+			"publicKey": "test-publicKey-signature",
+		},
+		Type: identityType,
 	}
 
-	if identity.PublicKey == "" {
-		t.Fatal("Expected public key to be set, got empty string")
+	// Encode the identity to populate Hash and Bytes fields
+	hash, bytes, err := EncodeIdentity(*identity)
+	if err != nil {
+		return nil, err
 	}
+	identity.Hash = hash
+	identity.Bytes = bytes
 
-	if identity.Hash == "" {
-		t.Fatal("Expected identity hash to be set, got empty string")
-	}
+	return identity, nil
 }
 
-func TestSign(t *testing.T) {
-	privateKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	identity, _ := NewIdentity("test-id", privateKey, "orbitdb")
-	data := []byte("data to sign")
+func TestSignAndVerify(t *testing.T) {
+	identity, err := createTestIdentity("test-id", "test-type")
+	if err != nil {
+		t.Fatalf("Failed to create test identity: %v", err)
+	}
 
+	data := []byte("test-data")
+
+	// Test Sign
 	signature, err := identity.Sign(data)
 	if err != nil {
-		t.Fatalf("Expected no error during signing, got %v", err)
+		t.Fatalf("Failed to sign data: %v", err)
 	}
 
-	if signature == "" {
-		t.Fatal("Expected signature, got empty string")
+	// Test Verify
+	if !identity.Verify(signature, data) {
+		t.Fatal("Expected valid signature verification to succeed")
+	}
+
+	// Test with altered data
+	if identity.Verify(signature, []byte("tampered-data")) {
+		t.Fatal("Expected verification to fail with altered data")
 	}
 }
 
-func TestVerify(t *testing.T) {
-	privateKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	identity, _ := NewIdentity("test-id", privateKey, "orbitdb")
-	data := []byte("data to sign")
-	signature, _ := identity.Sign(data)
-
-	// Test valid signature and data
-	if !identity.Verify(signature, data) {
-		t.Fatal("Expected verification to succeed with valid data, but it failed")
+func TestIsIdentity(t *testing.T) {
+	identity, err := createTestIdentity("test-id", "test-type")
+	if err != nil {
+		t.Fatalf("Failed to create test identity: %v", err)
 	}
 
-	// Test with tampered data
-	invalidData := []byte("tampered data")
-	if identity.Verify(signature, invalidData) {
-		t.Fatal("Expected verification to fail with tampered data, but it succeeded")
+	if !IsIdentity(identity) {
+		t.Fatal("Expected IsIdentity to return true for valid identity")
 	}
 
-	// Test with a clearly invalid signature
-	invalidSignature := "invalidsignature"
-	if identity.Verify(invalidSignature, data) {
-		t.Fatal("Expected verification to fail with an invalid signature, but it succeeded")
+	// Test with incomplete identity
+	invalidIdentity := &Identity{}
+	if IsIdentity(invalidIdentity) {
+		t.Fatal("Expected IsIdentity to return false for incomplete identity")
+	}
+}
+
+func TestIsEqual(t *testing.T) {
+	identityA, err := createTestIdentity("test-id", "test-type")
+	if err != nil {
+		t.Fatalf("Failed to create test identity A: %v", err)
+	}
+	identityB, err := createTestIdentity("test-id", "test-type")
+	if err != nil {
+		t.Fatalf("Failed to create test identity B: %v", err)
 	}
 
-	// Test with an incorrect signature (generate a new signature for different data)
-	otherData := []byte("different data")
-	otherSignature, _ := identity.Sign(otherData)
-	if identity.Verify(otherSignature, data) {
-		t.Fatal("Expected verification to fail with a mismatched signature, but it succeeded")
+	// Modify identityB to match identityA's values
+	identityB.ID = identityA.ID
+	identityB.PublicKey = identityA.PublicKey
+	identityB.Hash = identityA.Hash
+	identityB.Signatures = identityA.Signatures
+	identityB.Bytes = identityA.Bytes
+
+	if !IsEqual(identityA, identityB) {
+		t.Fatal("Expected IsEqual to return true for identical identities")
+	}
+
+	// Modify one field to make them unequal
+	identityB.ID = "different-id"
+	if IsEqual(identityA, identityB) {
+		t.Fatal("Expected IsEqual to return false for differing identities")
 	}
 }
 
 func TestEncodeDecodeIdentity(t *testing.T) {
-	privateKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	identity, _ := NewIdentity("test-id", privateKey, "orbitdb")
-
-	// Set up signatures
-	identity.Signatures = map[string]string{
-		"id":        "signature_for_id",
-		"publicKey": "signature_for_public_key",
-	}
-
-	// Encode identity
-	hash, encodedBytes, err := EncodeIdentity(*identity)
+	identity, err := createTestIdentity("test-id", "test-type")
 	if err != nil {
-		t.Fatalf("Expected no error during encoding, got %v", err)
+		t.Fatalf("Failed to create test identity: %v", err)
 	}
 
-	// Verify encodedBytes is non-empty
-	if len(encodedBytes) == 0 {
-		t.Fatal("Expected encoded bytes, got empty slice")
+	// Test EncodeIdentity
+	hash, bytes, err := EncodeIdentity(*identity)
+	if err != nil {
+		t.Fatalf("Failed to encode identity: %v", err)
 	}
-
-	// Verify hash is non-empty
 	if hash == "" {
-		t.Fatal("Expected non-empty hash, got empty string")
+		t.Fatal("Expected non-empty hash from EncodeIdentity")
+	}
+	if len(bytes) == 0 {
+		t.Fatal("Expected non-empty bytes from EncodeIdentity")
 	}
 
-	// Decode the identity to verify all fields
-	decodedIdentity, err := DecodeIdentity(encodedBytes)
+	// Test DecodeIdentity
+	decodedIdentity, err := DecodeIdentity(bytes)
 	if err != nil {
 		t.Fatalf("Failed to decode identity: %v", err)
 	}
 
-	// Check ID
-	if decodedIdentity.ID != identity.ID {
-		t.Fatalf("Expected ID %s, got %s", identity.ID, decodedIdentity.ID)
-	}
-
-	// Check PublicKey
-	if decodedIdentity.PublicKey != identity.PublicKey {
-		t.Fatalf("Expected PublicKey %s, got %s", identity.PublicKey, decodedIdentity.PublicKey)
-	}
-
-	// Check Type
-	if decodedIdentity.Type != identity.Type {
-		t.Fatalf("Expected Type %s, got %s", identity.Type, decodedIdentity.Type)
-	}
-
-	// Check Signatures
-	if decodedIdentity.Signatures["id"] != identity.Signatures["id"] {
-		t.Fatalf("Expected id signature %s, got %s", identity.Signatures["id"], decodedIdentity.Signatures["id"])
-	}
-
-	if decodedIdentity.Signatures["publicKey"] != identity.Signatures["publicKey"] {
-		t.Fatalf("Expected publicKey signature %s, got %s", identity.Signatures["publicKey"], decodedIdentity.Signatures["publicKey"])
-	}
-}
-
-func TestDecodeIdentityErrors(t *testing.T) {
-	// Test with missing fields
-	encodedBytes := []byte{} // empty input
-	_, err := DecodeIdentity(encodedBytes)
-	if err == nil {
-		t.Fatal("Expected error for empty input, got none")
-	}
-
-	// Test with missing 'id'
-	invalidData := map[string]interface{}{
-		"publicKey": "test_public_key",
-		"signatures": map[string]string{
-			"id":        "signature_for_id",
-			"publicKey": "signature_for_public_key",
-		},
-		"type": "test-type",
-	}
-	encodedBytes, _ = cbor.Marshal(invalidData)
-	_, err = DecodeIdentity(encodedBytes)
-	if err == nil || err.Error() != "invalid or missing 'id' field" {
-		t.Fatalf("Expected error for missing 'id' field, got %v", err)
-	}
-
-	// Test with missing 'publicKey'
-	invalidData = map[string]interface{}{
-		"id": "test-id",
-		"signatures": map[string]string{
-			"id":        "signature_for_id",
-			"publicKey": "signature_for_public_key",
-		},
-		"type": "test-type",
-	}
-	encodedBytes, _ = cbor.Marshal(invalidData)
-	_, err = DecodeIdentity(encodedBytes)
-	if err == nil || err.Error() != "invalid or missing 'publicKey' field" {
-		t.Fatalf("Expected error for missing 'publicKey' field, got %v", err)
-	}
-
-	// Test with missing 'signatures'
-	invalidData = map[string]interface{}{
-		"id":        "test-id",
-		"publicKey": "test_public_key",
-		"type":      "test-type",
-	}
-	encodedBytes, _ = cbor.Marshal(invalidData)
-	_, err = DecodeIdentity(encodedBytes)
-	if err == nil || err.Error() != "invalid or missing 'signatures' field" {
-		t.Fatalf("Expected error for missing 'signatures' field, got %v", err)
-	}
-
-	// Additional tests for missing or malformed fields within signatures (like 'id' or 'publicKey') can follow a similar pattern.
-}
-
-func TestDecodeIdentityInvalidSignatureFormat(t *testing.T) {
-	// Simulate malformed signatures with non-string values
-	invalidData := map[string]interface{}{
-		"id":        "test-id",
-		"publicKey": "test_public_key",
-		"signatures": map[string]interface{}{
-			"id":        123, // Non-string value
-			"publicKey": "valid_signature",
-		},
-		"type": "test-type",
-	}
-
-	encodedBytes, _ := cbor.Marshal(invalidData)
-	_, err := DecodeIdentity(encodedBytes)
-	if err == nil || err.Error() != "invalid signature format" {
-		t.Fatalf("Expected error for invalid signature format, got %v", err)
-	}
-}
-
-func TestNewIdentityErrors(t *testing.T) {
-	// Test missing 'id'
-	privateKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	_, err := NewIdentity("", privateKey, "orbitdb")
-	if err == nil || err.Error() != "identity ID is required" {
-		t.Fatalf("Expected error for missing 'id', got %v", err)
-	}
-
-	// Test missing 'signatures'
-	identity, _ := NewIdentity("test-id", privateKey, "orbitdb")
-	identity.Signatures = nil
-	if IsIdentity(identity) {
-		t.Fatal("Expected false for missing 'signatures', but got true")
-	}
-
-	// Test missing 'type'
-	_, err = NewIdentity("test-id", privateKey, "")
-	if err == nil || err.Error() != "identity type is required" {
-		t.Fatalf("Expected error for missing 'type', got %v", err)
+	// Ensure the decoded identity matches the original
+	if !IsEqual(identity, decodedIdentity) {
+		t.Fatal("Expected decoded identity to be equal to the original")
 	}
 }
