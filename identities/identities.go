@@ -41,6 +41,19 @@ func (ids *Identities) VerifyIdentity(identity *identitytypes.Identity, signatur
 	return ids.provider.VerifyIdentity(identity, signature, data)
 }
 
+// Sign signs the provided data using the identity's private key.
+func (ids *Identities) Sign(identity *identitytypes.Identity, data []byte) (string, error) {
+	if identity.PrivateKey == nil {
+		return "", errors.New("private signing key not found for identity")
+	}
+	return identity.Sign(data)
+}
+
+// Verify verifies the provided signature against the data and public key.
+func (ids *Identities) Verify(signature string, identity *identitytypes.Identity, data []byte) bool {
+	return identity.Verify(signature, data)
+}
+
 // init registers the default provider.
 func init() {
 	RegisterProvider(providers.NewPublicKeyProvider())
