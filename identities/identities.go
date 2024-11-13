@@ -31,6 +31,10 @@ func (ids *Identities) CreateIdentity(id string) (*identitytypes.Identity, error
 		return nil, err
 	}
 
+	if !identitytypes.IsIdentity(identity) {
+		return nil, errors.New("invalid identity created")
+	}
+
 	// Store the identity in the storage map
 	ids.storage[identity.Hash] = identity
 	return identity, nil
