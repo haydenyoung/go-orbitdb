@@ -2,10 +2,6 @@ package identitytypes
 
 import (
 	"bytes"
-	"crypto/ecdsa"
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"github.com/ipfs/go-cid"
@@ -14,14 +10,12 @@ import (
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/multiformats/go-multibase"
 	mh "github.com/multiformats/go-multihash"
-	"math/big"
 )
 
 // Identity represents a basic identity structure.
 type Identity struct {
 	ID         string            // Unique ID for the identity
 	PublicKey  string            // Hex representation of the public key
-	PrivateKey *ecdsa.PrivateKey // ECDSA private key for signing
 	Hash       string            // Hash of the identity (ID + PublicKey)
 	Signatures map[string]string // Signatures for id and publicKey
 	Bytes      []byte            // Encoded byte representation of the identity
@@ -34,37 +28,6 @@ type EncodedIdentity struct {
 	Bytes    []byte
 	CID      cid.Cid
 	Hash     string
-}
-
-// Sign generates a signature for the provided data using the private key.
-func (i *Identity) Sign(data []byte) (string, error) {
-	// Hash the data
-	hashedData := sha256.Sum256(data)
-	r, s, err := ecdsa.Sign(rand.Reader, i.PrivateKey, hashedData[:])
-	if err != nil {
-		return "", err
-	}
-
-	// Concatenate r and s values and encode as hex
-	signature := append(r.Bytes(), s.Bytes()...)
-	return hex.EncodeToString(signature), nil
-}
-
-// Verify checks if the provided signature is valid for the data.
-func (i *Identity) Verify(signatureHex string, data []byte) bool {
-	sigBytes, err := hex.DecodeString(signatureHex)
-	if err != nil || len(sigBytes) < 64 {
-		return false
-	}
-
-	r := new(big.Int).SetBytes(sigBytes[:len(sigBytes)/2])
-	s := new(big.Int).SetBytes(sigBytes[len(sigBytes)/2:])
-
-	// Hash the data
-	hashedData := sha256.Sum256(data)
-
-	// Verify the signature
-	return ecdsa.Verify(&i.PrivateKey.PublicKey, hashedData[:], r, s)
 }
 
 // IsIdentity Checks if an identity has all required fields populated.
