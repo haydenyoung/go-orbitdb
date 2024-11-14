@@ -61,17 +61,30 @@ func (ids *Identities) VerifyIdentity(identity *identitytypes.Identity) bool {
 	return verified
 }
 
-// Sign signs the provided data using the identity's private key.
-func (ids *Identities) Sign(identity *identitytypes.Identity, data []byte) (string, error) {
-	if identity.PrivateKey == nil {
-		return "", errors.New("private signing key not found for identity")
-	}
-	return identity.Sign(data)
+// Sign signs the provided data using the identity's private key from the KeyStore.
+func (ids *Identities) Sign(id string, data []byte) (string, error) {
+	// Use KeyStore to sign the data
+	return ids.keystore.SignMessage(id, data)
 }
 
 // Verify verifies the provided signature against the data and public key.
 func (ids *Identities) Verify(signature string, identity *identitytypes.Identity, data []byte) bool {
-	return identity.Verify(signature, data)
+	// Decode the public key from the identity's hex-encoded string
+	publicKeyBytes, err := hex.DecodeString(identity.PublicKey)
+	if err != nil || len(publicKeyBytes) < 64 {
+		return false
+	}
+
+	// Reconstruct the ecdsa.PublicKey from the byte slice
+	pubKey := ecdsa.PublicKey{
+		Curve: elliptic.P256(),
+		X:     new(big.Int).SetBytes(publicKeyBytes[:len(publicKeyBytes)/2]),
+		Y:     new(big.Int).SetBytes(publicKeyBytes[len(publicKeyBytes)/2:]),
+	}
+
+	// Use VerifyMessage from KeyStore to verify the signature
+	verified, err := keystore.VerifyMessage(pubKey, data, signature)
+	return err == nil && verified
 }
 
 // init registers the default provider.
