@@ -39,6 +39,16 @@ func NewIdentities(providerType string) (*Identities, error) {
 	}, nil
 }
 
+// ClearAll clears all keys from the KeyStore
+func (ids *Identities) ClearAll() {
+	ids.keystore.Clear()
+}
+
+// AddManualKey allows adding an externally generated key.
+func (ids *Identities) AddManualKey(id string, privateKey *ecdsa.PrivateKey) error {
+	return ids.keystore.AddKey(id, privateKey)
+}
+
 // CreateIdentity generates a new identity using the selected provider.
 func (ids *Identities) CreateIdentity(id string) (*identitytypes.Identity, error) {
 	identity, err := ids.provider.CreateIdentity(id)
