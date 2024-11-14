@@ -26,18 +26,7 @@ func (p *PublicKeyProvider) Type() string {
 	return "publickey"
 }
 
-// createHardcodedKeyPair creates a fixed ECDSA private key for hardcoded testing.
-func createHardcodedKeyPair() *ecdsa.PrivateKey {
-	privateKey := new(ecdsa.PrivateKey)
-	privateKey.PublicKey.Curve = elliptic.P256()
-
-	privateKey.D, _ = new(big.Int).SetString("5e5d9e0a44685aee2282a44d2d3e9a1b", 16)
-	privateKey.PublicKey.X, privateKey.PublicKey.Y = privateKey.PublicKey.Curve.ScalarBaseMult(privateKey.D.Bytes())
-
-	return privateKey
-}
-
-// CreateIdentity generates a new Identity instance using the hardcoded ECDSA private key.
+// CreateIdentity generates a new identity, signing the ID and public key.
 func (p *PublicKeyProvider) CreateIdentity(id string) (*identitytypes.Identity, error) {
 	privateKey := createHardcodedKeyPair()
 
