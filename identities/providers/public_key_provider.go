@@ -86,16 +86,29 @@ func (p *PublicKeyProvider) VerifyIdentity(identity *identitytypes.Identity) (bo
 		return false, errors.New("identity is missing required fields")
 	}
 
-	// Verify the ID signature
-	idSignature, hasIdSig := identity.Signatures["id"]
-	if !hasIdSig || !p.Verify(identity, idSignature, []byte(identity.ID)) {
-		return false, errors.New("invalid or missing ID signature")
+	// Decode the public key from the hex-encoded string
+	publicKeyBytes, err := hex.DecodeString(identity.PublicKey)
+	if err != nil || len(publicKeyBytes) < 64 {
+		return false, errors.New("invalid public key encoding")
 	}
 
-	// Verify the public key signature
-	publicKeySignature, hasPubKeySig := identity.Signatures["publicKey"]
-	if !hasPubKeySig || !p.Verify(identity, publicKeySignature, []byte(identity.PublicKey)) {
-		return false, errors.New("invalid or missing public key signature")
+	// Reconstruct the ecdsa.PublicKey
+	pubKey := ecdsa.PublicKey{
+		Curve: elliptic.P256(),
+		X:     new(big.Int).SetBytes(publicKeyBytes[:len(publicKeyBytes)/2]),
+		Y:     new(big.Int).SetBytes(publicKeyBytes[len(publicKeyBytes)/2:]),
+	}
+
+	// Verify ID signature
+	idVerified, err := keystore.VerifyMessage(pubKey, []byte(identity.ID), identity.Signatures["id"])
+	if err != nil || !idVerified {
+		return false, errors.New("invalid ID signature")
+	}
+
+	// Verify public key signature
+	publicKeyVerified, err := keystore.VerifyMessage(pubKey, []byte(identity.PublicKey), identity.Signatures["publicKey"])
+	if err != nil || !publicKeyVerified {
+		return false, errors.New("invalid public key signature")
 	}
 
 	// Additional validation can be added here if needed
