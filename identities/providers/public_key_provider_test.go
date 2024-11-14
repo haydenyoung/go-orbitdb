@@ -1,18 +1,26 @@
 package providers
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"encoding/hex"
+	"math/big"
+	"orbitdb/go-orbitdb/keystore"
 	"testing"
 )
 
 func TestPublicKeyProviderType(t *testing.T) {
-	provider := NewPublicKeyProvider()
+	ks := keystore.NewKeyStore()
+	provider := NewPublicKeyProvider(ks)
 	if provider.Type() != "publickey" {
 		t.Fatalf("Expected provider type 'publickey', got %s", provider.Type())
 	}
 }
 
 func TestCreateIdentity(t *testing.T) {
-	provider := NewPublicKeyProvider()
+	ks := keystore.NewKeyStore()
+	provider := NewPublicKeyProvider(ks)
+
 	identity, err := provider.CreateIdentity("test-id")
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
@@ -33,10 +41,34 @@ func TestCreateIdentity(t *testing.T) {
 	if identity.Type != "publickey" {
 		t.Fatalf("Expected identity type 'publickey', got %s", identity.Type)
 	}
+
+	// Verify that the ID signature is valid
+	publicKeyBytes, err := hex.DecodeString(identity.PublicKey)
+	if err != nil {
+		t.Fatalf("Error decoding public key: %v", err)
+	}
+
+	pubKey := ecdsa.PublicKey{
+		Curve: elliptic.P256(),
+		X:     new(big.Int).SetBytes(publicKeyBytes[:len(publicKeyBytes)/2]),
+		Y:     new(big.Int).SetBytes(publicKeyBytes[len(publicKeyBytes)/2:]),
+	}
+
+	idVerified, err := keystore.VerifyMessage(pubKey, []byte(identity.ID), identity.Signatures["id"])
+	if err != nil || !idVerified {
+		t.Fatal("Expected ID signature to be valid")
+	}
+
+	publicKeyVerified, err := keystore.VerifyMessage(pubKey, []byte(identity.PublicKey), identity.Signatures["publicKey"])
+	if err != nil || !publicKeyVerified {
+		t.Fatal("Expected public key signature to be valid")
+	}
 }
 
 func TestVerifyIdentity(t *testing.T) {
-	provider := NewPublicKeyProvider()
+	ks := keystore.NewKeyStore()
+	provider := NewPublicKeyProvider(ks)
+
 	identity, err := provider.CreateIdentity("test-id")
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
@@ -56,29 +88,5 @@ func TestVerifyIdentity(t *testing.T) {
 	valid, err = provider.VerifyIdentity(identity)
 	if valid || err == nil {
 		t.Fatal("Expected VerifyIdentity to return false for a tampered identity")
-	}
-}
-
-func TestSignAndVerify(t *testing.T) {
-	provider := NewPublicKeyProvider()
-	identity, err := provider.CreateIdentity("test-id")
-	if err != nil {
-		t.Fatalf("Expected no error, got %v", err)
-	}
-
-	data := "test-data"
-	signature, err := provider.Sign(data, identity)
-	if err != nil {
-		t.Fatalf("Expected no error signing data, got %v", err)
-	}
-
-	// Verify that the signature is valid
-	if !provider.Verify(identity, signature, []byte(data)) {
-		t.Fatal("Expected valid signature verification to return true")
-	}
-
-	// Test with altered data
-	if provider.Verify(identity, signature, []byte("tampered-data")) {
-		t.Fatal("Expected verification to fail with altered data")
 	}
 }
