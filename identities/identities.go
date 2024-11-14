@@ -1,27 +1,41 @@
 package identities
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"encoding/hex"
 	"errors"
+	"math/big"
 	"orbitdb/go-orbitdb/identities/identitytypes"
 	"orbitdb/go-orbitdb/identities/providers"
+	"orbitdb/go-orbitdb/keystore"
 )
 
 // Identities manages a collection of identities
 type Identities struct {
 	storage  map[string]*identitytypes.Identity
 	provider Provider
+	keystore *keystore.KeyStore
 }
 
-// NewIdentities initializes the identities manager with a specific provider.
+// NewIdentities initializes the identities manager with a specific provider and a KeyStore.
 func NewIdentities(providerType string) (*Identities, error) {
-	provider, err := GetProvider(providerType)
-	if err != nil {
-		return nil, err
+	// Initialize a KeyStore instance
+	ks := keystore.NewKeyStore()
+
+	// Select the provider based on providerType
+	var provider Provider
+	switch providerType {
+	case "publickey":
+		provider = providers.NewPublicKeyProvider(ks)
+	default:
+		return nil, errors.New("unsupported provider type")
 	}
 
 	return &Identities{
 		storage:  make(map[string]*identitytypes.Identity),
 		provider: provider,
+		keystore: ks,
 	}, nil
 }
 
@@ -62,5 +76,6 @@ func (ids *Identities) Verify(signature string, identity *identitytypes.Identity
 
 // init registers the default provider.
 func init() {
-	RegisterProvider(providers.NewPublicKeyProvider())
+	ks := keystore.NewKeyStore()
+	RegisterProvider(providers.NewPublicKeyProvider(ks))
 }
