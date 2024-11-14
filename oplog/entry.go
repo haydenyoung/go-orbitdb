@@ -2,12 +2,17 @@ package oplog
 
 import (
 	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"encoding/hex"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/multiformats/go-multibase"
 	mh "github.com/multiformats/go-multihash"
+	"math/big"
 	"orbitdb/go-orbitdb/identities/identitytypes"
+	"orbitdb/go-orbitdb/keystore"
 	"sort"
 )
 
@@ -36,7 +41,8 @@ func (e EncodedEntry) GetBase58CID() string {
 	return cidBase58
 }
 
-func NewEntry(identity *identitytypes.Identity, id string, payload string, clock Clock, next []string, refs []string) EncodedEntry {
+// NewEntry creates a new log entry, signing it with the KeyStore.
+func NewEntry(ks *keystore.KeyStore, identity *identitytypes.Identity, id string, payload string, clock Clock, next []string, refs []string) EncodedEntry {
 	if identity == nil {
 		panic("Identity is required, cannot create entry")
 	}
@@ -69,7 +75,7 @@ func NewEntry(identity *identitytypes.Identity, id string, payload string, clock
 	encodedEntry := Encode(entry)
 
 	// Sign the encoded entry data
-	signature, err := identity.Sign(encodedEntry.Bytes)
+	signature, err := ks.SignMessage(identity.ID, encodedEntry.Bytes)
 	if err != nil {
 		panic(err)
 	}
@@ -87,6 +93,7 @@ func NewEntry(identity *identitytypes.Identity, id string, payload string, clock
 	}
 }
 
+// VerifyEntrySignature verifies the signature on an entry using KeyStore.
 func VerifyEntrySignature(identity *identitytypes.Identity, entry EncodedEntry) bool {
 
 	// Recreate the entry data without Signature, Key, and Identity fields
@@ -102,8 +109,24 @@ func VerifyEntrySignature(identity *identitytypes.Identity, entry EncodedEntry) 
 	// Encode the entry data without the Key, Identity, and Signature fields
 	reconstructedEncodedEntry := Encode(entryData)
 
-	// Use the provider to verify the signature on the reconstructed data
-	return identity.Verify(entry.Signature, reconstructedEncodedEntry.Bytes)
+	// Decode the hex-encoded public key to reconstruct the ecdsa.PublicKey
+	publicKeyBytes, err := hex.DecodeString(identity.PublicKey)
+	if err != nil || len(publicKeyBytes) < 64 {
+		return false
+	}
+
+	// Reconstruct the ecdsa.PublicKey
+	pubKey := ecdsa.PublicKey{
+		Curve: elliptic.P256(),
+		X:     new(big.Int).SetBytes(publicKeyBytes[:len(publicKeyBytes)/2]),
+		Y:     new(big.Int).SetBytes(publicKeyBytes[len(publicKeyBytes)/2:]),
+	}
+
+	verified, err := keystore.VerifyMessage(pubKey, reconstructedEncodedEntry.Bytes, entry.Signature)
+	if err != nil {
+		return false
+	}
+	return verified
 }
 
 // IsEntry checks if an object is a valid entry
