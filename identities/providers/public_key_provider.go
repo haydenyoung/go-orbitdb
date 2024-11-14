@@ -9,12 +9,19 @@ import (
 	"errors"
 	"math/big"
 	"orbitdb/go-orbitdb/identities/identitytypes"
+	"orbitdb/go-orbitdb/keystore"
 )
 
-// PublicKeyProvider is a simple provider using public key-based identities.
-type PublicKeyProvider struct{}
+// PublicKeyProvider is a provider using public key-based identities and a KeyStore.
+type PublicKeyProvider struct {
+	keystore *keystore.KeyStore
+}
 
-// Type returns the provider type.
+// NewPublicKeyProvider creates a new PublicKeyProvider with a KeyStore.
+func NewPublicKeyProvider(ks *keystore.KeyStore) *PublicKeyProvider {
+	return &PublicKeyProvider{keystore: ks}
+}
+
 func (p *PublicKeyProvider) Type() string {
 	return "publickey"
 }
