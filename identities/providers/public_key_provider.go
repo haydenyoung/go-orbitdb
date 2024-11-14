@@ -3,8 +3,6 @@ package providers
 import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
-	"crypto/rand"
-	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"math/big"
@@ -110,8 +108,6 @@ func (p *PublicKeyProvider) VerifyIdentity(identity *identitytypes.Identity) (bo
 	if err != nil || !publicKeyVerified {
 		return false, errors.New("invalid public key signature")
 	}
-
-	// Additional validation can be added here if needed
 
 	return true, nil
 }
