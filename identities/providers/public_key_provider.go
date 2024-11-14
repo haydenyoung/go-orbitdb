@@ -28,28 +28,38 @@ func (p *PublicKeyProvider) Type() string {
 
 // CreateIdentity generates a new identity, signing the ID and public key.
 func (p *PublicKeyProvider) CreateIdentity(id string) (*identitytypes.Identity, error) {
-	privateKey := createHardcodedKeyPair()
+	// Check if a key already exists for this ID
+	if !p.keystore.HasKey(id) {
+		// If not, create a new key
+		_, err := p.keystore.CreateKey(id)
+		if err != nil {
+			return nil, err
+		}
+	}
 
-	// Convert the public key to a hex string
+	privateKey, err := p.keystore.GetKey(id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Generate the public key as a hex-encoded string
 	publicKey := hex.EncodeToString(append(privateKey.PublicKey.X.Bytes(), privateKey.PublicKey.Y.Bytes()...))
 
-	// Sign the ID to create a valid `idSignature`
-	idSignature, err := signData(privateKey, []byte(id))
+	// Sign the ID and public key
+	idSignature, err := p.keystore.SignMessage(id, []byte(id))
 	if err != nil {
 		return nil, err
 	}
 
-	// Sign the public key to create a valid `publicKeySignature`
-	publicKeySignature, err := signData(privateKey, []byte(publicKey))
+	publicKeySignature, err := p.keystore.SignMessage(id, []byte(publicKey))
 	if err != nil {
 		return nil, err
 	}
 
-	// Create the identity instance with Type set to "publickey" and dummy signatures
+	// Create the identity instance
 	identity := &identitytypes.Identity{
-		ID:         id,
-		PublicKey:  publicKey,
-		PrivateKey: privateKey,
+		ID:        id,
+		PublicKey: publicKey,
 		Signatures: map[string]string{
 			"id":        idSignature,
 			"publicKey": publicKeySignature,
