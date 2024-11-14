@@ -96,38 +96,3 @@ func (p *PublicKeyProvider) VerifyIdentity(identity *identitytypes.Identity) (bo
 
 	return true, nil
 }
-
-// GetId retrieves or generates an ID based on the identity's public key.
-func (p *PublicKeyProvider) GetId(id string) (string, error) {
-	privateKey := createHardcodedKeyPair() // Replace with keystore logic in the future
-	publicKey := append(privateKey.PublicKey.X.Bytes(), privateKey.PublicKey.Y.Bytes()...)
-	return hex.EncodeToString(publicKey), nil
-}
-
-// Sign signs data using the identity's private key.
-func (p *PublicKeyProvider) Sign(data string, identity *identitytypes.Identity) (string, error) {
-	return identity.Sign([]byte(data))
-}
-
-// Verify verifies the identity signature.
-func (p *PublicKeyProvider) Verify(identity *identitytypes.Identity, signature string, data []byte) bool {
-	return identity.Verify(signature, data)
-}
-
-// NewPublicKeyProvider creates a new instance of PublicKeyProvider.
-func NewPublicKeyProvider() *PublicKeyProvider {
-	return &PublicKeyProvider{}
-}
-
-func signData(privateKey *ecdsa.PrivateKey, data []byte) (string, error) {
-	// Hash the data to create a deterministic signature
-	hash := sha256.Sum256(data)
-
-	r, s, err := ecdsa.Sign(rand.Reader, privateKey, hash[:])
-	if err != nil {
-		return "", err
-	}
-
-	// Encode the signature as a hex string
-	return hex.EncodeToString(r.Bytes()) + hex.EncodeToString(s.Bytes()), nil
-}
