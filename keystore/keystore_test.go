@@ -155,7 +155,7 @@ func TestVerifyMessage(t *testing.T) {
 	}
 
 	// Verify the message using the public key
-	valid, err := VerifyMessage(privateKey.PublicKey, data, signature)
+	valid, err := ks.VerifyMessage(privateKey.PublicKey, data, signature)
 	if err != nil {
 		t.Fatalf("Expected no error verifying message, got %v", err)
 	}
@@ -164,7 +164,7 @@ func TestVerifyMessage(t *testing.T) {
 	}
 
 	// Attempt verification with altered data
-	valid, err = VerifyMessage(privateKey.PublicKey, []byte("tampered-data"), signature)
+	valid, err = ks.VerifyMessage(privateKey.PublicKey, []byte("tampered-data"), signature)
 	if err != nil {
 		t.Fatalf("Expected no error with verification attempt, got %v", err)
 	}
@@ -174,7 +174,7 @@ func TestVerifyMessage(t *testing.T) {
 
 	// Attempt verification with an invalid signature format
 	invalidSig := "invalid-signature"
-	valid, err = VerifyMessage(privateKey.PublicKey, data, invalidSig)
+	valid, err = ks.VerifyMessage(privateKey.PublicKey, data, invalidSig)
 	if err == nil {
 		t.Fatal("Expected error with invalid signature format, got nil")
 	}

@@ -94,8 +94,7 @@ func NewEntry(ks *keystore.KeyStore, identity *identitytypes.Identity, id string
 }
 
 // VerifyEntrySignature verifies the signature on an entry using KeyStore.
-func VerifyEntrySignature(identity *identitytypes.Identity, entry EncodedEntry) bool {
-
+func VerifyEntrySignature(ks *keystore.KeyStore, identity *identitytypes.Identity, entry EncodedEntry) bool {
 	// Recreate the entry data without Signature, Key, and Identity fields
 	entryData := Entry{
 		ID:      entry.ID,
@@ -122,11 +121,9 @@ func VerifyEntrySignature(identity *identitytypes.Identity, entry EncodedEntry) 
 		Y:     new(big.Int).SetBytes(publicKeyBytes[len(publicKeyBytes)/2:]),
 	}
 
-	verified, err := keystore.VerifyMessage(pubKey, reconstructedEncodedEntry.Bytes, entry.Signature)
-	if err != nil {
-		return false
-	}
-	return verified
+	// Use the KeyStore instance to verify the signature
+	verified, err := ks.VerifyMessage(pubKey, reconstructedEncodedEntry.Bytes, entry.Signature)
+	return err == nil && verified
 }
 
 // IsEntry checks if an object is a valid entry

@@ -54,12 +54,12 @@ func TestCreateIdentity(t *testing.T) {
 		Y:     new(big.Int).SetBytes(publicKeyBytes[len(publicKeyBytes)/2:]),
 	}
 
-	idVerified, err := keystore.VerifyMessage(pubKey, []byte(identity.ID), identity.Signatures["id"])
+	idVerified, err := ks.VerifyMessage(pubKey, []byte(identity.ID), identity.Signatures["id"])
 	if err != nil || !idVerified {
 		t.Fatal("Expected ID signature to be valid")
 	}
 
-	publicKeyVerified, err := keystore.VerifyMessage(pubKey, []byte(identity.PublicKey), identity.Signatures["publicKey"])
+	publicKeyVerified, err := ks.VerifyMessage(pubKey, []byte(identity.PublicKey), identity.Signatures["publicKey"])
 	if err != nil || !publicKeyVerified {
 		t.Fatal("Expected public key signature to be valid")
 	}

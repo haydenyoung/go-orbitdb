@@ -93,7 +93,7 @@ func (ids *Identities) Verify(signature string, identity *identitytypes.Identity
 	}
 
 	// Use VerifyMessage from KeyStore to verify the signature
-	verified, err := keystore.VerifyMessage(pubKey, data, signature)
+	verified, err := ids.keystore.VerifyMessage(pubKey, data, signature)
 	return err == nil && verified
 }
 

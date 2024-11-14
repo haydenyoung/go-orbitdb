@@ -46,14 +46,14 @@ func TestVerifyEntrySignature(t *testing.T) {
 	clock := Clock{ID: "test-clock", Time: 1}
 	entry := NewEntry(ks, identity, "entry-id", "payload-data", clock, nil, nil)
 
-	isValid := VerifyEntrySignature(identity, entry)
+	isValid := VerifyEntrySignature(ks, identity, entry)
 	if !isValid {
 		t.Error("Expected signature to be valid, but verification failed")
 	}
 
 	// Modify the payload and check that the signature verification fails
 	entry.Payload = "tampered-payload"
-	isValid = VerifyEntrySignature(identity, entry)
+	isValid = VerifyEntrySignature(ks, identity, entry)
 	if isValid {
 		t.Error("Expected signature verification to fail for tampered entry, but it succeeded")
 	}

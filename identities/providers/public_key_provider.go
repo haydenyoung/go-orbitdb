@@ -97,14 +97,14 @@ func (p *PublicKeyProvider) VerifyIdentity(identity *identitytypes.Identity) (bo
 		Y:     new(big.Int).SetBytes(publicKeyBytes[len(publicKeyBytes)/2:]),
 	}
 
-	// Verify ID signature
-	idVerified, err := keystore.VerifyMessage(pubKey, []byte(identity.ID), identity.Signatures["id"])
+	// Verify the ID signature using the KeyStore's VerifyMessage method
+	idVerified, err := p.keystore.VerifyMessage(pubKey, []byte(identity.ID), identity.Signatures["id"])
 	if err != nil || !idVerified {
 		return false, errors.New("invalid ID signature")
 	}
 
-	// Verify public key signature
-	publicKeyVerified, err := keystore.VerifyMessage(pubKey, []byte(identity.PublicKey), identity.Signatures["publicKey"])
+	// Verify the public key signature using the KeyStore's VerifyMessage method
+	publicKeyVerified, err := p.keystore.VerifyMessage(pubKey, []byte(identity.PublicKey), identity.Signatures["publicKey"])
 	if err != nil || !publicKeyVerified {
 		return false, errors.New("invalid public key signature")
 	}
