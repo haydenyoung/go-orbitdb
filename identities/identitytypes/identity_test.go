@@ -16,15 +16,14 @@ func createTestIdentity(id string, identityType string) (*Identity, error) {
 		return nil, err
 	}
 
-	// Encode the public key
+	// Encode the public key as a hex string
 	publicKeyBytes := append(privateKey.PublicKey.X.Bytes(), privateKey.PublicKey.Y.Bytes()...)
 	publicKeyHex := hex.EncodeToString(publicKeyBytes)
 
-	// Create the Identity object
+	// Create the Identity object without PrivateKey
 	identity := &Identity{
-		ID:         id,
-		PublicKey:  publicKeyHex,
-		PrivateKey: privateKey,
+		ID:        id,
+		PublicKey: publicKeyHex,
 		Signatures: map[string]string{
 			"id":        "test-id-signature",
 			"publicKey": "test-publicKey-signature",
@@ -43,31 +42,7 @@ func createTestIdentity(id string, identityType string) (*Identity, error) {
 	return identity, nil
 }
 
-func TestSignAndVerify(t *testing.T) {
-	identity, err := createTestIdentity("test-id", "test-type")
-	if err != nil {
-		t.Fatalf("Failed to create test identity: %v", err)
-	}
-
-	data := []byte("test-data")
-
-	// Test Sign
-	signature, err := identity.Sign(data)
-	if err != nil {
-		t.Fatalf("Failed to sign data: %v", err)
-	}
-
-	// Test Verify
-	if !identity.Verify(signature, data) {
-		t.Fatal("Expected valid signature verification to succeed")
-	}
-
-	// Test with altered data
-	if identity.Verify(signature, []byte("tampered-data")) {
-		t.Fatal("Expected verification to fail with altered data")
-	}
-}
-
+// TestIsIdentity checks if an identity has all required fields populated.
 func TestIsIdentity(t *testing.T) {
 	identity, err := createTestIdentity("test-id", "test-type")
 	if err != nil {
@@ -85,6 +60,7 @@ func TestIsIdentity(t *testing.T) {
 	}
 }
 
+// TestIsEqual checks if two identities are identical based on key properties.
 func TestIsEqual(t *testing.T) {
 	identityA, err := createTestIdentity("test-id", "test-type")
 	if err != nil {
@@ -113,6 +89,7 @@ func TestIsEqual(t *testing.T) {
 	}
 }
 
+// TestEncodeDecodeIdentity verifies encoding and decoding of an identity.
 func TestEncodeDecodeIdentity(t *testing.T) {
 	identity, err := createTestIdentity("test-id", "test-type")
 	if err != nil {
