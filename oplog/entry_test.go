@@ -2,27 +2,27 @@ package oplog
 
 import (
 	"bytes"
+	"orbitdb/go-orbitdb/keystore"
 	"testing"
 
 	"orbitdb/go-orbitdb/identities/identitytypes"
 	"orbitdb/go-orbitdb/identities/providers"
 )
 
-func generateTestIdentity(t *testing.T) *identitytypes.Identity {
-
-	provider := providers.NewPublicKeyProvider()
+func setupTestKeyStoreAndIdentity(t *testing.T) (*keystore.KeyStore, *identitytypes.Identity) {
+	ks := keystore.NewKeyStore()
+	provider := providers.NewPublicKeyProvider(ks)
 	identity, err := provider.CreateIdentity("test-id")
 	if err != nil {
 		t.Fatalf("Failed to create identity: %v", err)
 	}
-
-	return identity
+	return ks, identity
 }
 
 func TestNewEntry(t *testing.T) {
-	identity := generateTestIdentity(t)
+	ks, identity := setupTestKeyStoreAndIdentity(t)
 	clock := Clock{ID: "test-clock", Time: 1}
-	entry := NewEntry(identity, "entry-id", "payload-data", clock, nil, nil)
+	entry := NewEntry(ks, identity, "entry-id", "payload-data", clock, nil, nil)
 
 	if entry.ID != "entry-id" {
 		t.Errorf("Expected entry ID to be 'entry-id', got '%s'", entry.ID)
@@ -42,18 +42,18 @@ func TestNewEntry(t *testing.T) {
 }
 
 func TestVerifyEntrySignature(t *testing.T) {
-	identity := generateTestIdentity(t)
+	ks, identity := setupTestKeyStoreAndIdentity(t)
 	clock := Clock{ID: "test-clock", Time: 1}
-	entry := NewEntry(identity, "entry-id", "payload-data", clock, nil, nil)
+	entry := NewEntry(ks, identity, "entry-id", "payload-data", clock, nil, nil)
 
-	isValid := VerifyEntrySignature(identity, entry)
+	isValid := VerifyEntrySignature(ks, identity, entry)
 	if !isValid {
 		t.Error("Expected signature to be valid, but verification failed")
 	}
 
 	// Modify the payload and check that the signature verification fails
 	entry.Payload = "tampered-payload"
-	isValid = VerifyEntrySignature(identity, entry)
+	isValid = VerifyEntrySignature(ks, identity, entry)
 	if isValid {
 		t.Error("Expected signature verification to fail for tampered entry, but it succeeded")
 	}
@@ -77,11 +77,11 @@ func TestIsEntry(t *testing.T) {
 }
 
 func TestIsEqual(t *testing.T) {
-	identity := generateTestIdentity(t)
+	ks, identity := setupTestKeyStoreAndIdentity(t)
 	clock := Clock{ID: "test-clock", Time: 1}
 
-	entry1 := NewEntry(identity, "entry-id", "payload-data", clock, nil, nil)
-	entry2 := NewEntry(identity, "entry-id", "payload-data", clock, nil, nil)
+	entry1 := NewEntry(ks, identity, "entry-id", "payload-data", clock, nil, nil)
+	entry2 := NewEntry(ks, identity, "entry-id", "payload-data", clock, nil, nil)
 
 	// Both entries have identical content, so they should have the same serialized bytes
 	if !IsEqual(entry1, entry2) {
@@ -89,7 +89,7 @@ func TestIsEqual(t *testing.T) {
 	}
 
 	// Create an entry with different content and check equality
-	entry3 := NewEntry(identity, "entry-id", "different-payload", clock, nil, nil)
+	entry3 := NewEntry(ks, identity, "entry-id", "different-payload", clock, nil, nil)
 	if IsEqual(entry1, entry3) {
 		t.Error("Expected entries with different content to not be equal")
 	}

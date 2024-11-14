@@ -3,57 +3,61 @@ package providers
 import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
-	"crypto/rand"
-	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"math/big"
 	"orbitdb/go-orbitdb/identities/identitytypes"
+	"orbitdb/go-orbitdb/keystore"
 )
 
-// PublicKeyProvider is a simple provider using public key-based identities.
-type PublicKeyProvider struct{}
+// PublicKeyProvider is a provider using public key-based identities and a KeyStore.
+type PublicKeyProvider struct {
+	keystore *keystore.KeyStore
+}
 
-// Type returns the provider type.
+// NewPublicKeyProvider creates a new PublicKeyProvider with a KeyStore.
+func NewPublicKeyProvider(ks *keystore.KeyStore) *PublicKeyProvider {
+	return &PublicKeyProvider{keystore: ks}
+}
+
 func (p *PublicKeyProvider) Type() string {
 	return "publickey"
 }
 
-// createHardcodedKeyPair creates a fixed ECDSA private key for hardcoded testing.
-func createHardcodedKeyPair() *ecdsa.PrivateKey {
-	privateKey := new(ecdsa.PrivateKey)
-	privateKey.PublicKey.Curve = elliptic.P256()
-
-	privateKey.D, _ = new(big.Int).SetString("5e5d9e0a44685aee2282a44d2d3e9a1b", 16)
-	privateKey.PublicKey.X, privateKey.PublicKey.Y = privateKey.PublicKey.Curve.ScalarBaseMult(privateKey.D.Bytes())
-
-	return privateKey
-}
-
-// CreateIdentity generates a new Identity instance using the hardcoded ECDSA private key.
+// CreateIdentity generates a new identity, signing the ID and public key.
 func (p *PublicKeyProvider) CreateIdentity(id string) (*identitytypes.Identity, error) {
-	privateKey := createHardcodedKeyPair()
+	// Check if a key already exists for this ID
+	if !p.keystore.HasKey(id) {
+		// If not, create a new key
+		_, err := p.keystore.CreateKey(id)
+		if err != nil {
+			return nil, err
+		}
+	}
 
-	// Convert the public key to a hex string
+	privateKey, err := p.keystore.GetKey(id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Generate the public key as a hex-encoded string
 	publicKey := hex.EncodeToString(append(privateKey.PublicKey.X.Bytes(), privateKey.PublicKey.Y.Bytes()...))
 
-	// Sign the ID to create a valid `idSignature`
-	idSignature, err := signData(privateKey, []byte(id))
+	// Sign the ID and public key
+	idSignature, err := p.keystore.SignMessage(id, []byte(id))
 	if err != nil {
 		return nil, err
 	}
 
-	// Sign the public key to create a valid `publicKeySignature`
-	publicKeySignature, err := signData(privateKey, []byte(publicKey))
+	publicKeySignature, err := p.keystore.SignMessage(id, []byte(publicKey))
 	if err != nil {
 		return nil, err
 	}
 
-	// Create the identity instance with Type set to "publickey" and dummy signatures
+	// Create the identity instance
 	identity := &identitytypes.Identity{
-		ID:         id,
-		PublicKey:  publicKey,
-		PrivateKey: privateKey,
+		ID:        id,
+		PublicKey: publicKey,
 		Signatures: map[string]string{
 			"id":        idSignature,
 			"publicKey": publicKeySignature,
@@ -80,54 +84,30 @@ func (p *PublicKeyProvider) VerifyIdentity(identity *identitytypes.Identity) (bo
 		return false, errors.New("identity is missing required fields")
 	}
 
-	// Verify the ID signature
-	idSignature, hasIdSig := identity.Signatures["id"]
-	if !hasIdSig || !p.Verify(identity, idSignature, []byte(identity.ID)) {
-		return false, errors.New("invalid or missing ID signature")
+	// Decode the public key from the hex-encoded string
+	publicKeyBytes, err := hex.DecodeString(identity.PublicKey)
+	if err != nil || len(publicKeyBytes) < 64 {
+		return false, errors.New("invalid public key encoding")
 	}
 
-	// Verify the public key signature
-	publicKeySignature, hasPubKeySig := identity.Signatures["publicKey"]
-	if !hasPubKeySig || !p.Verify(identity, publicKeySignature, []byte(identity.PublicKey)) {
-		return false, errors.New("invalid or missing public key signature")
+	// Reconstruct the ecdsa.PublicKey
+	pubKey := ecdsa.PublicKey{
+		Curve: elliptic.P256(),
+		X:     new(big.Int).SetBytes(publicKeyBytes[:len(publicKeyBytes)/2]),
+		Y:     new(big.Int).SetBytes(publicKeyBytes[len(publicKeyBytes)/2:]),
 	}
 
-	// Additional validation can be added here if needed
+	// Verify the ID signature using the KeyStore's VerifyMessage method
+	idVerified, err := p.keystore.VerifyMessage(pubKey, []byte(identity.ID), identity.Signatures["id"])
+	if err != nil || !idVerified {
+		return false, errors.New("invalid ID signature")
+	}
+
+	// Verify the public key signature using the KeyStore's VerifyMessage method
+	publicKeyVerified, err := p.keystore.VerifyMessage(pubKey, []byte(identity.PublicKey), identity.Signatures["publicKey"])
+	if err != nil || !publicKeyVerified {
+		return false, errors.New("invalid public key signature")
+	}
 
 	return true, nil
-}
-
-// GetId retrieves or generates an ID based on the identity's public key.
-func (p *PublicKeyProvider) GetId(id string) (string, error) {
-	privateKey := createHardcodedKeyPair() // Replace with keystore logic in the future
-	publicKey := append(privateKey.PublicKey.X.Bytes(), privateKey.PublicKey.Y.Bytes()...)
-	return hex.EncodeToString(publicKey), nil
-}
-
-// Sign signs data using the identity's private key.
-func (p *PublicKeyProvider) Sign(data string, identity *identitytypes.Identity) (string, error) {
-	return identity.Sign([]byte(data))
-}
-
-// Verify verifies the identity signature.
-func (p *PublicKeyProvider) Verify(identity *identitytypes.Identity, signature string, data []byte) bool {
-	return identity.Verify(signature, data)
-}
-
-// NewPublicKeyProvider creates a new instance of PublicKeyProvider.
-func NewPublicKeyProvider() *PublicKeyProvider {
-	return &PublicKeyProvider{}
-}
-
-func signData(privateKey *ecdsa.PrivateKey, data []byte) (string, error) {
-	// Hash the data to create a deterministic signature
-	hash := sha256.Sum256(data)
-
-	r, s, err := ecdsa.Sign(rand.Reader, privateKey, hash[:])
-	if err != nil {
-		return "", err
-	}
-
-	// Encode the signature as a hex string
-	return hex.EncodeToString(r.Bytes()) + hex.EncodeToString(s.Bytes()), nil
 }

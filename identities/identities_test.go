@@ -1,14 +1,12 @@
 package identities
 
 import (
-	"orbitdb/go-orbitdb/identities/providers"
 	"testing"
 )
 
 // Helper function to initialize Identities with a public key provider
 func setupIdentities() (*Identities, error) {
 	// Register the PublicKeyProvider
-	RegisterProvider(providers.NewPublicKeyProvider())
 	return NewIdentities("publickey")
 }
 
@@ -82,12 +80,13 @@ func TestSignAndVerify(t *testing.T) {
 	}
 
 	data := []byte("test data")
-	signature, err := identities.Sign(identity, data)
+	// Pass identity ID directly to Sign instead of the Identity struct
+	signature, err := identities.Sign(identity.ID, data)
 	if err != nil {
 		t.Fatalf("Expected no error signing data, got %v", err)
 	}
 
-	// Verify the signature
+	// Verify the signature with the updated Verify method
 	if !identities.Verify(signature, identity, data) {
 		t.Fatal("Expected valid signature verification to succeed")
 	}
