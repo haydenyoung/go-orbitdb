@@ -77,8 +77,15 @@ func (ks *KeyStore) AddKey(id string, privateKey *ecdsa.PrivateKey) error {
 	if ks.HasKey(id) {
 		return errors.New("key already exists for this ID")
 	}
-	ks.storage[id] = privateKey
-	return nil
+
+	// Serialize the private key
+	privateKeyBytes, err := SerializePrivateKey(privateKey)
+	if err != nil {
+		return err
+	}
+
+	// Store the serialized private key
+	return ks.storage.Put("private_"+id, privateKeyBytes)
 }
 
 // Clear removes all keys from the KeyStore.
@@ -99,7 +106,8 @@ func (ks *KeyStore) GetKey(id string) (*ecdsa.PrivateKey, error) {
 		return nil, errors.New("key not found")
 	}
 
-	return privateKey, nil
+	// Deserialize the private key
+	return DeserializePrivateKey(privateKeyBytes)
 }
 
 // SignMessage signs data using the private key associated with the given ID.
@@ -131,4 +139,45 @@ func (ks *KeyStore) VerifyMessage(publicKey ecdsa.PublicKey, data []byte, signat
 
 	hash := sha256.Sum256(data)
 	return ecdsa.Verify(&publicKey, hash[:], r, s), nil
+}
+
+// SerializePrivateKey serializes an ECDSA private key to a JSON-encoded byte slice.
+func SerializePrivateKey(key *ecdsa.PrivateKey) ([]byte, error) {
+	data := PrivateKeyData{
+		Curve: key.Curve.Params().Name,
+		X:     key.X.Text(16), // Serialize as hex string
+		Y:     key.Y.Text(16),
+		D:     key.D.Text(16),
+	}
+	return json.Marshal(data)
+}
+
+// DeserializePrivateKey reconstructs an ECDSA private key from a JSON-encoded byte slice.
+func DeserializePrivateKey(data []byte) (*ecdsa.PrivateKey, error) {
+	var keyData PrivateKeyData
+	if err := json.Unmarshal(data, &keyData); err != nil {
+		return nil, err
+	}
+
+	curve := elliptic.P256() // Default to P256; extendable for other curves.
+	if keyData.Curve != curve.Params().Name {
+		return nil, errors.New("unsupported curve")
+	}
+
+	x := new(big.Int)
+	y := new(big.Int)
+	d := new(big.Int)
+
+	x.SetString(keyData.X, 16)
+	y.SetString(keyData.Y, 16)
+	d.SetString(keyData.D, 16)
+
+	return &ecdsa.PrivateKey{
+		PublicKey: ecdsa.PublicKey{
+			Curve: curve,
+			X:     x,
+			Y:     y,
+		},
+		D: d,
+	}, nil
 }
