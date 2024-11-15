@@ -6,11 +6,21 @@ import (
 	"encoding/hex"
 	"math/big"
 	"orbitdb/go-orbitdb/keystore"
+	"orbitdb/go-orbitdb/storage"
 	"testing"
 )
 
+func setupKeyStore() *keystore.KeyStore {
+	// Use LRUStorage as the storage backend for testing
+	lruStorage, err := storage.NewLRUStorage(100)
+	if err != nil {
+		panic(err) // Ensure setup failure is immediately apparent
+	}
+	return keystore.NewKeyStore(lruStorage)
+}
+
 func TestPublicKeyProviderType(t *testing.T) {
-	ks := keystore.NewKeyStore()
+	ks := setupKeyStore()
 	provider := NewPublicKeyProvider(ks)
 	if provider.Type() != "publickey" {
 		t.Fatalf("Expected provider type 'publickey', got %s", provider.Type())
@@ -18,7 +28,7 @@ func TestPublicKeyProviderType(t *testing.T) {
 }
 
 func TestCreateIdentity(t *testing.T) {
-	ks := keystore.NewKeyStore()
+	ks := setupKeyStore()
 	provider := NewPublicKeyProvider(ks)
 
 	identity, err := provider.CreateIdentity("test-id")
@@ -66,7 +76,7 @@ func TestCreateIdentity(t *testing.T) {
 }
 
 func TestVerifyIdentity(t *testing.T) {
-	ks := keystore.NewKeyStore()
+	ks := setupKeyStore()
 	provider := NewPublicKeyProvider(ks)
 
 	identity, err := provider.CreateIdentity("test-id")
