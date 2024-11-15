@@ -203,3 +203,102 @@ func TestVerifyMessage(t *testing.T) {
 		t.Fatal("Expected invalid signature verification to fail")
 	}
 }
+
+func TestSerializePrivateKey(t *testing.T) {
+	// Generate a test private key
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate private key: %v", err)
+	}
+
+	// Serialize the private key
+	serializedKey, err := SerializePrivateKey(privateKey)
+	if err != nil {
+		t.Fatalf("Failed to serialize private key: %v", err)
+	}
+
+	// Deserialize the JSON to inspect the fields
+	var keyData PrivateKeyData
+	if err := json.Unmarshal(serializedKey, &keyData); err != nil {
+		t.Fatalf("Failed to unmarshal serialized key: %v", err)
+	}
+
+	// Verify fields
+	if keyData.Curve != privateKey.Curve.Params().Name {
+		t.Errorf("Curve mismatch: expected %s, got %s", privateKey.Curve.Params().Name, keyData.Curve)
+	}
+	if keyData.X != privateKey.X.Text(16) {
+		t.Errorf("X-coordinate mismatch: expected %s, got %s", privateKey.X.Text(16), keyData.X)
+	}
+	if keyData.Y != privateKey.Y.Text(16) {
+		t.Errorf("Y-coordinate mismatch: expected %s, got %s", privateKey.Y.Text(16), keyData.Y)
+	}
+	if keyData.D != privateKey.D.Text(16) {
+		t.Errorf("D value mismatch: expected %s, got %s", privateKey.D.Text(16), keyData.D)
+	}
+}
+
+func TestDeserializePrivateKey(t *testing.T) {
+	// Generate a test private key
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate private key: %v", err)
+	}
+
+	// Serialize the private key
+	serializedKey, err := SerializePrivateKey(privateKey)
+	if err != nil {
+		t.Fatalf("Failed to serialize private key: %v", err)
+	}
+
+	// Deserialize the private key
+	deserializedKey, err := DeserializePrivateKey(serializedKey)
+	if err != nil {
+		t.Fatalf("Failed to deserialize private key: %v", err)
+	}
+
+	// Verify fields of the deserialized key match the original
+	if deserializedKey.Curve != privateKey.Curve {
+		t.Errorf("Curve mismatch: expected %s, got %s", privateKey.Curve.Params().Name, deserializedKey.Curve.Params().Name)
+	}
+	if deserializedKey.X.Cmp(privateKey.X) != 0 {
+		t.Errorf("X-coordinate mismatch: expected %s, got %s", privateKey.X, deserializedKey.X)
+	}
+	if deserializedKey.Y.Cmp(privateKey.Y) != 0 {
+		t.Errorf("Y-coordinate mismatch: expected %s, got %s", privateKey.Y, deserializedKey.Y)
+	}
+	if deserializedKey.D.Cmp(privateKey.D) != 0 {
+		t.Errorf("D value mismatch: expected %s, got %s", privateKey.D, deserializedKey.D)
+	}
+}
+
+func TestSerializeAndDeserializePrivateKey(t *testing.T) {
+	// Generate a test private key
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate private key: %v", err)
+	}
+
+	// Serialize the private key
+	serializedKey, err := SerializePrivateKey(privateKey)
+	if err != nil {
+		t.Fatalf("Failed to serialize private key: %v", err)
+	}
+
+	// Deserialize the private key
+	deserializedKey, err := DeserializePrivateKey(serializedKey)
+	if err != nil {
+		t.Fatalf("Failed to deserialize private key: %v", err)
+	}
+
+	// Check if the deserialized key is identical to the original
+	if deserializedKey.Curve != privateKey.Curve {
+		t.Errorf("Curve mismatch: expected %s, got %s", privateKey.Curve.Params().Name, deserializedKey.Curve.Params().Name)
+	}
+	if deserializedKey.X.Cmp(privateKey.X) != 0 || deserializedKey.Y.Cmp(privateKey.Y) != 0 {
+		t.Error("Public key mismatch after deserialization")
+	}
+	if deserializedKey.D.Cmp(privateKey.D) != 0 {
+		t.Error("Private scalar D mismatch after deserialization")
+	}
+}
