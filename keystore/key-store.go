@@ -19,8 +19,14 @@ type KeyStore struct {
 	mu      sync.Mutex
 }
 
-// NewKeyStore initializes a new in-memory KeyStore.
-func NewKeyStore() *KeyStore {
+// PrivateKeyData represents the serialized form of a private key.
+type PrivateKeyData struct {
+	Curve string `json:"curve"`
+	X     string `json:"x"`
+	Y     string `json:"y"`
+	D     string `json:"d"`
+}
+
 // NewKeyStore initializes a new KeyStore with the provided Storage.
 func NewKeyStore(storage storage.Storage) *KeyStore {
 	return &KeyStore{
@@ -59,11 +65,8 @@ func (ks *KeyStore) CreateKey(id string) (*ecdsa.PrivateKey, error) {
 
 // HasKey checks if a key exists for a given ID.
 func (ks *KeyStore) HasKey(id string) bool {
-	ks.mu.Lock()
-	defer ks.mu.Unlock()
-
-	_, exists := ks.storage[id]
-	return exists
+	_, err := ks.storage.Get("private_" + id)
+	return err == nil
 }
 
 // AddKey adds a private key to the keystore (e.g., for imported keys).
