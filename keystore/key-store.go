@@ -6,21 +6,25 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"math/big"
+	"orbitdb/go-orbitdb/storage"
 	"sync"
 )
 
-// KeyStore provides a simple key management system.
+// KeyStore provides a key management system backed by a Storage interface.
 type KeyStore struct {
-	storage map[string]*ecdsa.PrivateKey
+	storage storage.Storage
 	mu      sync.Mutex
 }
 
 // NewKeyStore initializes a new in-memory KeyStore.
 func NewKeyStore() *KeyStore {
+// NewKeyStore initializes a new KeyStore with the provided Storage.
+func NewKeyStore(storage storage.Storage) *KeyStore {
 	return &KeyStore{
-		storage: make(map[string]*ecdsa.PrivateKey),
+		storage: storage,
 	}
 }
 
@@ -29,7 +33,7 @@ func (ks *KeyStore) CreateKey(id string) (*ecdsa.PrivateKey, error) {
 	ks.mu.Lock()
 	defer ks.mu.Unlock()
 
-	if _, exists := ks.storage[id]; exists {
+	if ks.HasKey(id) {
 		return nil, errors.New("key already exists for this ID")
 	}
 
@@ -38,7 +42,18 @@ func (ks *KeyStore) CreateKey(id string) (*ecdsa.PrivateKey, error) {
 		return nil, err
 	}
 
-	ks.storage[id] = privateKey
+	// Serialize the private key
+	privateKeyBytes, err := SerializePrivateKey(privateKey)
+	if err != nil {
+		return nil, err
+	}
+
+	// Store the serialized private key
+	err = ks.storage.Put("private_"+id, privateKeyBytes)
+	if err != nil {
+		return nil, err
+	}
+
 	return privateKey, nil
 }
 
@@ -51,12 +66,12 @@ func (ks *KeyStore) HasKey(id string) bool {
 	return exists
 }
 
-// AddKey Adds a private key directly to the keystore (e.g., for imported keys).
+// AddKey adds a private key to the keystore (e.g., for imported keys).
 func (ks *KeyStore) AddKey(id string, privateKey *ecdsa.PrivateKey) error {
 	ks.mu.Lock()
 	defer ks.mu.Unlock()
 
-	if _, exists := ks.storage[id]; exists {
+	if ks.HasKey(id) {
 		return errors.New("key already exists for this ID")
 	}
 	ks.storage[id] = privateKey
@@ -64,11 +79,11 @@ func (ks *KeyStore) AddKey(id string, privateKey *ecdsa.PrivateKey) error {
 }
 
 // Clear removes all keys from the KeyStore.
-func (ks *KeyStore) Clear() {
+func (ks *KeyStore) Clear() error {
 	ks.mu.Lock()
 	defer ks.mu.Unlock()
 
-	ks.storage = make(map[string]*ecdsa.PrivateKey)
+	return ks.storage.Clear()
 }
 
 // GetKey retrieves a private key by ID from storage.
@@ -76,8 +91,8 @@ func (ks *KeyStore) GetKey(id string) (*ecdsa.PrivateKey, error) {
 	ks.mu.Lock()
 	defer ks.mu.Unlock()
 
-	privateKey, exists := ks.storage[id]
-	if !exists {
+	privateKeyBytes, err := ks.storage.Get("private_" + id)
+	if err != nil {
 		return nil, errors.New("key not found")
 	}
 
