@@ -4,18 +4,29 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"encoding/json"
+	"orbitdb/go-orbitdb/storage"
 	"testing"
 )
 
+func newTestKeyStore(t *testing.T) *KeyStore {
+	// Use an LRUStorage backend for testing.
+	lruStorage, err := storage.NewLRUStorage(100)
+	if err != nil {
+		t.Fatalf("Failed to create LRU storage: %v", err)
+	}
+	return NewKeyStore(lruStorage)
+}
+
 func TestNewKeyStore(t *testing.T) {
-	ks := NewKeyStore()
+	ks := newTestKeyStore(t)
 	if ks == nil {
 		t.Fatal("Expected KeyStore instance, got nil")
 	}
 }
 
 func TestCreateKey(t *testing.T) {
-	ks := NewKeyStore()
+	ks := newTestKeyStore(t)
 	id := "test-id"
 
 	_, err := ks.CreateKey(id)
@@ -31,7 +42,7 @@ func TestCreateKey(t *testing.T) {
 }
 
 func TestHasKey(t *testing.T) {
-	ks := NewKeyStore()
+	ks := newTestKeyStore(t)
 	id := "test-id"
 
 	if ks.HasKey(id) {
@@ -49,7 +60,7 @@ func TestHasKey(t *testing.T) {
 }
 
 func TestAddKey(t *testing.T) {
-	ks := NewKeyStore()
+	ks := newTestKeyStore(t)
 	id := "test-id"
 
 	// Generate a new ECDSA key pair
@@ -72,7 +83,7 @@ func TestAddKey(t *testing.T) {
 }
 
 func TestClear(t *testing.T) {
-	ks := NewKeyStore()
+	ks := newTestKeyStore(t)
 	id := "test-id"
 
 	_, err := ks.CreateKey(id)
@@ -81,7 +92,10 @@ func TestClear(t *testing.T) {
 	}
 
 	// Clear all keys
-	ks.Clear()
+	err = ks.Clear()
+	if err != nil {
+		t.Fatalf("Expected no error clearing KeyStore, got %v", err)
+	}
 
 	if ks.HasKey(id) {
 		t.Fatal("Expected HasKey to return false after clearing KeyStore")
@@ -89,7 +103,7 @@ func TestClear(t *testing.T) {
 }
 
 func TestGetKey(t *testing.T) {
-	ks := NewKeyStore()
+	ks := newTestKeyStore(t)
 	id := "test-id"
 
 	// Create a new key
@@ -104,7 +118,10 @@ func TestGetKey(t *testing.T) {
 		t.Fatalf("Expected no error, got %v", err)
 	}
 
-	if retrievedKey != privateKey {
+	// Serialize and compare keys
+	origBytes, _ := json.Marshal(privateKey)
+	retrievedBytes, _ := json.Marshal(retrievedKey)
+	if string(origBytes) != string(retrievedBytes) {
 		t.Fatal("Expected retrieved key to match the original key")
 	}
 
@@ -116,7 +133,7 @@ func TestGetKey(t *testing.T) {
 }
 
 func TestSignMessage(t *testing.T) {
-	ks := NewKeyStore()
+	ks := newTestKeyStore(t)
 	id := "test-id"
 	data := []byte("test-data")
 
@@ -126,9 +143,13 @@ func TestSignMessage(t *testing.T) {
 		t.Fatalf("Expected no error, got %v", err)
 	}
 
-	_, err = ks.SignMessage(id, data)
+	signature, err := ks.SignMessage(id, data)
 	if err != nil {
 		t.Fatalf("Expected no error signing message, got %v", err)
+	}
+
+	if len(signature) == 0 {
+		t.Fatal("Expected non-empty signature")
 	}
 
 	// Attempt to sign with a non-existent key
@@ -139,7 +160,7 @@ func TestSignMessage(t *testing.T) {
 }
 
 func TestVerifyMessage(t *testing.T) {
-	ks := NewKeyStore()
+	ks := newTestKeyStore(t)
 	id := "test-id"
 	data := []byte("test-data")
 
