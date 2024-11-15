@@ -1,6 +1,9 @@
 package oplog
 
 import (
+	"fmt"
+	"orbitdb/go-orbitdb/identities/identitytypes"
+	"orbitdb/go-orbitdb/identities/providers"
 	"sync"
 	"testing"
 
@@ -8,10 +11,30 @@ import (
 	"orbitdb/go-orbitdb/storage"
 )
 
+func createIdentityWithProvider(keyStore *keystore.KeyStore, id string) (*identitytypes.Identity, error) {
+	// Initialize the PublicKeyProvider with the KeyStore
+	provider := providers.NewPublicKeyProvider(keyStore)
+
+	// Use the provider to create an identity
+	identity, err := provider.CreateIdentity(id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create identity using provider: %w", err)
+	}
+
+	return identity, nil
+}
+
 func TestLog_AppendAndRetrieve(t *testing.T) {
 	storage := storage.NewMemoryStorage()
 	keyStore := keystore.NewKeyStore(storage)
-	log, err := NewLog("test-log", "test-identity", storage, keyStore)
+
+	// Create identity using PublicKeyProvider
+	identity, err := createIdentityWithProvider(keyStore, "test-identity")
+	if err != nil {
+		t.Fatalf("Failed to create identity: %v", err)
+	}
+
+	log, err := NewLog("test-log", identity, storage, keyStore)
 	if err != nil {
 		t.Fatalf("Failed to create log: %v", err)
 	}
@@ -41,7 +64,15 @@ func TestLog_AppendAndRetrieve(t *testing.T) {
 
 func TestLog_Clear(t *testing.T) {
 	storage := storage.NewMemoryStorage()
-	log, err := NewLog("test-log", "test-identity", storage, nil)
+	keyStore := keystore.NewKeyStore(storage)
+
+	// Create identity using PublicKeyProvider
+	identity, err := createIdentityWithProvider(keyStore, "test-identity")
+	if err != nil {
+		t.Fatalf("Failed to create identity: %v", err)
+	}
+
+	log, err := NewLog("test-log", identity, storage, keyStore)
 	if err != nil {
 		t.Fatalf("Failed to create log: %v", err)
 	}
@@ -71,7 +102,15 @@ func TestLog_Clear(t *testing.T) {
 
 func TestLog_ConcurrentAppend(t *testing.T) {
 	storage := storage.NewMemoryStorage()
-	log, err := NewLog("test-log", "test-identity", storage, nil)
+	keyStore := keystore.NewKeyStore(storage)
+
+	// Create identity using PublicKeyProvider
+	identity, err := createIdentityWithProvider(keyStore, "test-identity")
+	if err != nil {
+		t.Fatalf("Failed to create identity: %v", err)
+	}
+
+	log, err := NewLog("test-log", identity, storage, keyStore)
 	if err != nil {
 		t.Fatalf("Failed to create log: %v", err)
 	}
@@ -104,7 +143,15 @@ func TestLog_ConcurrentAppend(t *testing.T) {
 
 func TestLog_MultipleAppendsAndRetrieval(t *testing.T) {
 	storage := storage.NewMemoryStorage()
-	log, err := NewLog("test-log", "test-identity", storage, nil)
+	keyStore := keystore.NewKeyStore(storage)
+
+	// Create identity using PublicKeyProvider
+	identity, err := createIdentityWithProvider(keyStore, "test-identity")
+	if err != nil {
+		t.Fatalf("Failed to create identity: %v", err)
+	}
+
+	log, err := NewLog("test-log", identity, storage, keyStore)
 	if err != nil {
 		t.Fatalf("Failed to create log: %v", err)
 	}
@@ -136,13 +183,14 @@ func TestLog_MultipleAppendsAndRetrieval(t *testing.T) {
 func TestLog_WithCustomKeyStore(t *testing.T) {
 	storage := storage.NewMemoryStorage()
 	customKeyStore := keystore.NewKeyStore(storage)
-	if !customKeyStore.HasKey("custom-identity") {
-		if _, err := customKeyStore.CreateKey("custom-identity"); err != nil {
-			t.Fatalf("Failed to create key in custom KeyStore: %v", err)
-		}
+
+	// Create identity using PublicKeyProvider
+	identity, err := createIdentityWithProvider(customKeyStore, "custom-identity")
+	if err != nil {
+		t.Fatalf("Failed to create identity: %v", err)
 	}
 
-	log, err := NewLog("test-log", "custom-identity", storage, customKeyStore)
+	log, err := NewLog("test-log", identity, storage, customKeyStore)
 	if err != nil {
 		t.Fatalf("Failed to create log with custom KeyStore: %v", err)
 	}

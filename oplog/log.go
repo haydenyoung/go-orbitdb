@@ -14,7 +14,7 @@ import (
 // Log represents an append-only log
 type Log struct {
 	id       string
-	identity string
+	identity identitytypes.Identity
 	clock    Clock
 	head     *EncodedEntry
 	entries  storage.Storage
@@ -23,12 +23,12 @@ type Log struct {
 }
 
 // NewLog creates a new log instance
-func NewLog(id string, identity string, entryStorage storage.Storage, keyStore *keystore.KeyStore) (*Log, error) {
+func NewLog(id string, identity *identitytypes.Identity, entryStorage storage.Storage, keyStore *keystore.KeyStore) (*Log, error) {
 	if id == "" {
 		return nil, errors.New("log ID is required")
 	}
-	if identity == "" {
-		return nil, errors.New("identity is required")
+	if identity == nil || !identitytypes.IsIdentity(identity) {
+		return nil, errors.New("valid identity is required")
 	}
 
 	// Default to memory storage if none is provided
@@ -42,17 +42,17 @@ func NewLog(id string, identity string, entryStorage storage.Storage, keyStore *
 	}
 
 	// Ensure the KeyStore has the key for this identity
-	if !keyStore.HasKey(identity) {
-		_, err := keyStore.CreateKey(identity)
+	if !keyStore.HasKey(identity.ID) {
+		_, err := keyStore.CreateKey(identity.ID)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create key for identity %s: %w", identity, err)
+			return nil, fmt.Errorf("failed to create key for identity %s: %w", identity.ID, err)
 		}
 	}
 
 	return &Log{
 		id:       id,
-		identity: identity,
-		clock:    NewClock(identity, 0),
+		identity: *identity,
+		clock:    NewClock(identity.ID, 0),
 		entries:  entryStorage,
 		keystore: keyStore,
 	}, nil
@@ -63,6 +63,10 @@ func (l *Log) Append(payload string) (*EncodedEntry, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
+	if payload == "" {
+		return nil, errors.New("payload is required")
+	}
+
 	l.clock = TickClock(l.clock)
 
 	var next []string
@@ -70,10 +74,11 @@ func (l *Log) Append(payload string) (*EncodedEntry, error) {
 		next = []string{l.head.Hash}
 	}
 
-	entry := NewEntry(l.keystore, &identitytypes.Identity{
-		PublicKey: l.identity,
-		ID:        l.identity,
-	}, l.id, payload, l.clock, next, nil)
+	identity := &identitytypes.Identity{
+		PublicKey: l.identity.PublicKey,
+		ID:        l.identity.ID,
+	}
+	entry := NewEntry(l.keystore, identity, l.id, payload, l.clock, next, nil)
 
 	if err := l.entries.Put(entry.Hash, entry.Bytes); err != nil {
 		return nil, fmt.Errorf("failed to store entry: %w", err)
@@ -106,7 +111,7 @@ func (l *Log) Values() ([]EncodedEntry, error) {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 
-	var entries []EncodedEntry
+	entries := make([]EncodedEntry, 0)
 	ch, err := l.entries.Iterator()
 	if err != nil {
 		return nil, fmt.Errorf("failed to iterate over entries: %w", err)
@@ -115,7 +120,8 @@ func (l *Log) Values() ([]EncodedEntry, error) {
 	for kv := range ch {
 		entry, err := Decode([]byte(kv[1]))
 		if err != nil {
-			return nil, fmt.Errorf("failed to decode entry: %w", err)
+			fmt.Printf("Warning: Skipping invalid entry with error: %s\n", err)
+			continue
 		}
 		entries = append(entries, entry)
 	}
