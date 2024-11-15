@@ -3,6 +3,7 @@ package oplog
 import (
 	"bytes"
 	"orbitdb/go-orbitdb/keystore"
+	"orbitdb/go-orbitdb/storage"
 	"testing"
 
 	"orbitdb/go-orbitdb/identities/identitytypes"
@@ -10,7 +11,12 @@ import (
 )
 
 func setupTestKeyStoreAndIdentity(t *testing.T) (*keystore.KeyStore, *identitytypes.Identity) {
-	ks := keystore.NewKeyStore()
+	// Use LRUStorage as the storage backend for testing
+	lruStorage, err := storage.NewLRUStorage(100)
+	if err != nil {
+		panic(err) // Ensure setup failure is immediately apparent
+	}
+	ks := keystore.NewKeyStore(lruStorage)
 	provider := providers.NewPublicKeyProvider(ks)
 	identity, err := provider.CreateIdentity("test-id")
 	if err != nil {

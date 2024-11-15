@@ -9,6 +9,7 @@ import (
 	"orbitdb/go-orbitdb/identities/identitytypes"
 	"orbitdb/go-orbitdb/identities/providers"
 	"orbitdb/go-orbitdb/keystore"
+	"orbitdb/go-orbitdb/storage"
 )
 
 // Identities manages a collection of identities
@@ -19,9 +20,9 @@ type Identities struct {
 }
 
 // NewIdentities initializes the identities manager with a specific provider and a KeyStore.
-func NewIdentities(providerType string) (*Identities, error) {
+func NewIdentities(providerType string, storageBackend storage.Storage) (*Identities, error) {
 	// Initialize a KeyStore instance
-	ks := keystore.NewKeyStore()
+	ks := keystore.NewKeyStore(storageBackend)
 
 	// Select the provider based on providerType
 	var provider Provider
@@ -99,6 +100,7 @@ func (ids *Identities) Verify(signature string, identity *identitytypes.Identity
 
 // init registers the default provider.
 func init() {
-	ks := keystore.NewKeyStore()
+	lruStorage, _ := storage.NewLRUStorage(100)
+	ks := keystore.NewKeyStore(lruStorage)
 	RegisterProvider(providers.NewPublicKeyProvider(ks))
 }

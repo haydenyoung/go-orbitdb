@@ -1,17 +1,23 @@
 package identities
 
 import (
+	"orbitdb/go-orbitdb/storage"
 	"testing"
 )
 
-// Helper function to initialize Identities with a public key provider
-func setupIdentities() (*Identities, error) {
-	// Register the PublicKeyProvider
-	return NewIdentities("publickey")
+// Helper function to initialize Identities with a public key provider and storage backend
+func setupIdentities(storageBackend storage.Storage) (*Identities, error) {
+	return NewIdentities("publickey", storageBackend)
 }
 
 func TestNewIdentities(t *testing.T) {
-	identities, err := setupIdentities()
+	// Initialize an LRUStorage backend for testing
+	lruStorage, err := storage.NewLRUStorage(100)
+	if err != nil {
+		t.Fatalf("Failed to create LRUStorage: %v", err)
+	}
+
+	identities, err := setupIdentities(lruStorage)
 	if err != nil {
 		t.Fatalf("Expected no error initializing identities, got %v", err)
 	}
@@ -21,7 +27,13 @@ func TestNewIdentities(t *testing.T) {
 }
 
 func TestCreateIdentity(t *testing.T) {
-	identities, err := setupIdentities()
+	// Initialize an LRUStorage backend for testing
+	lruStorage, err := storage.NewLRUStorage(100)
+	if err != nil {
+		t.Fatalf("Failed to create LRUStorage: %v", err)
+	}
+
+	identities, err := setupIdentities(lruStorage)
 	if err != nil {
 		t.Fatalf("Error initializing identities: %v", err)
 	}
@@ -46,7 +58,13 @@ func TestCreateIdentity(t *testing.T) {
 }
 
 func TestVerifyIdentity(t *testing.T) {
-	identities, err := setupIdentities()
+	// Initialize an LRUStorage backend for testing
+	lruStorage, err := storage.NewLRUStorage(100)
+	if err != nil {
+		t.Fatalf("Failed to create LRUStorage: %v", err)
+	}
+
+	identities, err := setupIdentities(lruStorage)
 	if err != nil {
 		t.Fatalf("Error initializing identities: %v", err)
 	}
@@ -69,7 +87,13 @@ func TestVerifyIdentity(t *testing.T) {
 }
 
 func TestSignAndVerify(t *testing.T) {
-	identities, err := setupIdentities()
+	// Initialize an LRUStorage backend for testing
+	lruStorage, err := storage.NewLRUStorage(100)
+	if err != nil {
+		t.Fatalf("Failed to create LRUStorage: %v", err)
+	}
+
+	identities, err := setupIdentities(lruStorage)
 	if err != nil {
 		t.Fatalf("Error initializing identities: %v", err)
 	}
