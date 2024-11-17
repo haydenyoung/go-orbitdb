@@ -217,3 +217,94 @@ func TestLog_WithCustomKeyStore(t *testing.T) {
 		t.Errorf("Expected payload 'Custom KeyStore Entry', got '%s'", retrieved.Payload)
 	}
 }
+
+func TestLog_Traversal(t *testing.T) {
+	storage := storage.NewMemoryStorage()
+	keyStore := keystore.NewKeyStore(storage)
+
+	// Create identity
+	identity, err := createIdentityWithProvider(keyStore, "test-identity")
+	if err != nil {
+		t.Fatalf("Failed to create identity: %v", err)
+	}
+
+	log, err := NewLog("test-log", identity, storage, keyStore)
+	if err != nil {
+		t.Fatalf("Failed to create log: %v", err)
+	}
+
+	// Append multiple entries
+	payloads := []string{"Entry 1", "Entry 2", "Entry 3"}
+	var _ *EncodedEntry
+	for _, payload := range payloads {
+		_, err = log.Append(payload)
+		if err != nil {
+			t.Fatalf("Failed to append entry: %v", err)
+		}
+	}
+
+	// Traverse the log starting from the head
+	entries, err := log.Traverse("", nil)
+	if err != nil {
+		t.Fatalf("Failed to traverse log: %v", err)
+	}
+
+	if len(entries) != len(payloads) {
+		t.Errorf("Expected %d entries, got %d", len(payloads), len(entries))
+	}
+
+	// Check if entries match the payloads
+	for i, entry := range entries {
+		if entry.Payload != payloads[len(payloads)-1-i] { // Reverse order because of stack traversal
+			t.Errorf("Expected payload '%s', got '%s'", payloads[len(payloads)-1-i], entry.Payload)
+		}
+	}
+}
+
+func TestLog_TraversalWithStopCondition(t *testing.T) {
+	storage := storage.NewMemoryStorage()
+	keyStore := keystore.NewKeyStore(storage)
+
+	// Create identity
+	identity, err := createIdentityWithProvider(keyStore, "test-identity")
+	if err != nil {
+		t.Fatalf("Failed to create identity: %v", err)
+	}
+
+	log, err := NewLog("test-log", identity, storage, keyStore)
+	if err != nil {
+		t.Fatalf("Failed to create log: %v", err)
+	}
+
+	// Append multiple entries
+	payloads := []string{"Entry 1", "Entry 2", "Entry 3"}
+	var _ *EncodedEntry
+	for _, payload := range payloads {
+		_, err = log.Append(payload)
+		if err != nil {
+			t.Fatalf("Failed to append entry: %v", err)
+		}
+	}
+
+	// Stop traversal after the first entry
+	stopCondition := func(entry *EncodedEntry) bool {
+		return entry.Payload == "Entry 2"
+	}
+
+	entries, err := log.Traverse("", stopCondition)
+	if err != nil {
+		t.Fatalf("Failed to traverse log: %v", err)
+	}
+
+	// Check the result
+	expectedEntries := []string{"Entry 3", "Entry 2"} // In reverse order due to stack traversal
+	if len(entries) != len(expectedEntries) {
+		t.Errorf("Expected %d entries, got %d", len(expectedEntries), len(entries))
+	}
+
+	for i, entry := range entries {
+		if entry.Payload != expectedEntries[i] {
+			t.Errorf("Expected payload '%s', got '%s'", expectedEntries[i], entry.Payload)
+		}
+	}
+}
