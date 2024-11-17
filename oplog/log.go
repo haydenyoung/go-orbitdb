@@ -134,6 +134,61 @@ func (l *Log) Values() ([]EncodedEntry, error) {
 	return entries, nil
 }
 
+func (l *Log) Traverse(startHash string, shouldStop func(*EncodedEntry) bool) ([]*EncodedEntry, error) {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+
+	var traversed []*EncodedEntry
+	visited := make(map[string]bool)
+
+	// Start traversal from the specified entry or the current head
+	var stack []*EncodedEntry
+	if startHash != "" {
+		startEntry, err := l.Get(startHash)
+		if err != nil {
+			return nil, fmt.Errorf("failed to start traversal from entry: %w", err)
+		}
+		stack = []*EncodedEntry{startEntry}
+	} else if l.head != nil {
+		stack = []*EncodedEntry{l.head}
+	} else {
+		return nil, errors.New("no starting point for traversal")
+	}
+
+	// Perform the traversal
+	for len(stack) > 0 {
+		// Pop the last element from the stack
+		entry := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+
+		// Skip already visited entries
+		if visited[entry.Hash] {
+			continue
+		}
+		visited[entry.Hash] = true
+
+		// Add the entry to the traversed list
+		traversed = append(traversed, entry)
+
+		// Apply the stopping condition
+		if shouldStop != nil && shouldStop(entry) {
+			break
+		}
+
+		// Load and add the `next` entries to the stack
+		for _, nextHash := range entry.Entry.Next {
+			nextEntry, err := l.Get(nextHash)
+			if err != nil {
+				fmt.Printf("Warning: Failed to load next entry %s: %s\n", nextHash, err)
+				continue
+			}
+			stack = append(stack, nextEntry)
+		}
+	}
+
+	return traversed, nil
+}
+
 // Clear removes all entries from the log
 func (l *Log) Clear() error {
 	l.mu.Lock()
