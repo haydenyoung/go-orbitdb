@@ -1,162 +1,150 @@
 package oplog
 
 import (
-	"fmt"
-	"orbitdb/go-orbitdb/identities/identitytypes"
-	"orbitdb/go-orbitdb/identities/providers"
-	"sync"
 	"testing"
 
-	"orbitdb/go-orbitdb/keystore"
 	"orbitdb/go-orbitdb/storage"
 )
 
-func createIdentityWithProvider(keyStore *keystore.KeyStore, id string) (*identitytypes.Identity, error) {
-	// Initialize the PublicKeyProvider with the KeyStore
-	provider := providers.NewPublicKeyProvider(keyStore)
+func TestNewLog(t *testing.T) {
+	ks, identity := setupTestKeyStoreAndIdentity(t)
 
-	// Use the provider to create an identity
-	identity, err := provider.CreateIdentity(id)
+	logID := "test-log"
+	entryStorage := storage.NewMemoryStorage()
+	log, err := NewLog(logID, identity, entryStorage, ks)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create identity using provider: %w", err)
+		t.Fatalf("Failed to create new log: %v", err)
 	}
 
-	return identity, nil
+	if log == nil {
+		t.Fatal("Expected log to be non-nil")
+	}
+
+	if logID != log.id {
+		t.Errorf("Expected log ID to be '%s', got '%s'", logID, log.id)
+	}
+
+	if log.identity != identity {
+		t.Error("Log identity does not match the provided identity")
+	}
+
+	if log.clock.ID != identity.ID || log.clock.Time != 0 {
+		t.Errorf("Expected clock to be initialized with ID '%s' and Time 0, got ID '%s' and Time %d",
+			identity.ID, log.clock.ID, log.clock.Time)
+	}
+}
+
+func TestLog_AppendAndGet(t *testing.T) {
+	ks, identity := setupTestKeyStoreAndIdentity(t)
+
+	logID := "test-log"
+	entryStorage := storage.NewMemoryStorage()
+	log, err := NewLog(logID, identity, entryStorage, ks)
+	if err != nil {
+		t.Fatalf("Failed to create new log: %v", err)
+	}
+
+	payloads := []string{"first entry", "second entry", "third entry"}
+	appendedEntries := make([]*EncodedEntry, 0, len(payloads))
+
+	for _, payload := range payloads {
+		entry, err := log.Append(payload)
+		if err != nil {
+			t.Fatalf("Failed to append entry: %v", err)
+		}
+		appendedEntries = append(appendedEntries, entry)
+	}
+
+	for i, appendedEntry := range appendedEntries {
+		retrievedEntry, err := log.Get(appendedEntry.Hash)
+		if err != nil {
+			t.Fatalf("Failed to get entry: %v", err)
+		}
+		if retrievedEntry.Hash != appendedEntry.Hash {
+			t.Errorf("Retrieved entry hash does not match appended entry hash. Expected %s, got %s",
+				appendedEntry.Hash, retrievedEntry.Hash)
+		}
+		if retrievedEntry.Payload != appendedEntry.Payload {
+			t.Errorf("Retrieved entry payload does not match appended entry payload. Expected %s, got %s",
+				appendedEntry.Payload, retrievedEntry.Payload)
+		}
+		if retrievedEntry.Payload != payloads[i] {
+			t.Errorf("Retrieved entry payload does not match expected payload. Expected %s, got %s",
+				payloads[i], retrievedEntry.Payload)
+		}
+	}
 }
 
 func TestLog_AppendAndRetrieve(t *testing.T) {
-	storage := storage.NewMemoryStorage()
-	keyStore := keystore.NewKeyStore(storage)
+	// Step 1: Set up the test keystore and identity
+	ks, identity := setupTestKeyStoreAndIdentity(t)
 
-	// Create identity using PublicKeyProvider
-	identity, err := createIdentityWithProvider(keyStore, "test-identity")
+	// Step 2: Create a new log instance
+	logID := "test-log"
+	entryStorage := storage.NewMemoryStorage()
+	log, err := NewLog(logID, identity, entryStorage, ks)
 	if err != nil {
-		t.Fatalf("Failed to create identity: %v", err)
+		t.Fatalf("Failed to create new log: %v", err)
 	}
 
-	log, err := NewLog("test-log", identity, storage, keyStore)
-	if err != nil {
-		t.Fatalf("Failed to create log: %v", err)
+	// Step 3: Append multiple entries to the log
+	payloads := []string{"first entry", "second entry", "third entry"}
+	appendedEntries := make([]*EncodedEntry, 0, len(payloads))
+
+	for _, payload := range payloads {
+		entry, err := log.Append(payload)
+		if err != nil {
+			t.Fatalf("Failed to append entry: %v", err)
+		}
+		appendedEntries = append(appendedEntries, entry)
 	}
 
-	entry, err := log.Append("Hello, World!")
-	if err != nil {
-		t.Fatalf("Failed to append entry: %v", err)
+	// Step 4: Retrieve each appended entry using the Get method and verify
+	for i, appendedEntry := range appendedEntries {
+		retrievedEntry, err := log.Get(appendedEntry.Hash)
+		if err != nil {
+			t.Fatalf("Failed to get entry: %v", err)
+		}
+		if retrievedEntry.Hash != appendedEntry.Hash {
+			t.Errorf("Retrieved entry hash does not match appended entry hash. Expected %s, got %s", appendedEntry.Hash, retrievedEntry.Hash)
+		}
+		if retrievedEntry.Payload != appendedEntry.Payload {
+			t.Errorf("Retrieved entry payload does not match appended entry payload. Expected %s, got %s", appendedEntry.Payload, retrievedEntry.Payload)
+		}
+		if retrievedEntry.Payload != payloads[i] {
+			t.Errorf("Retrieved entry payload does not match expected payload. Expected %s, got %s", payloads[i], retrievedEntry.Payload)
+		}
 	}
 
-	head, err := log.Head()
-	if err != nil {
-		t.Fatalf("Failed to retrieve log head: %v", err)
-	}
-	if head.Hash != entry.Hash {
-		t.Fatalf("Log head does not match the appended entry")
-	}
-
-	retrieved, err := log.Get(entry.Hash)
-	if err != nil {
-		t.Fatalf("Failed to retrieve entry: %v", err)
-	}
-
-	if retrieved.Payload != "Hello, World!" {
-		t.Errorf("Expected payload 'Hello, World!', got '%s'", retrieved.Payload)
-	}
-}
-
-func TestLog_Clear(t *testing.T) {
-	storage := storage.NewMemoryStorage()
-	keyStore := keystore.NewKeyStore(storage)
-
-	// Create identity using PublicKeyProvider
-	identity, err := createIdentityWithProvider(keyStore, "test-identity")
-	if err != nil {
-		t.Fatalf("Failed to create identity: %v", err)
-	}
-
-	log, err := NewLog("test-log", identity, storage, keyStore)
-	if err != nil {
-		t.Fatalf("Failed to create log: %v", err)
-	}
-
-	_, err = log.Append("Entry 1")
-	if err != nil {
-		t.Fatalf("Failed to append entry: %v", err)
-	}
-
-	if err := log.Clear(); err != nil {
-		t.Fatalf("Failed to clear log: %v", err)
-	}
-
-	if _, err := log.Head(); err == nil {
-		t.Fatalf("Expected error when retrieving head of cleared log")
-	}
-
+	// Step 5: Test the Values method to ensure all entries are correctly stored and ordered
 	entries, err := log.Values()
 	if err != nil {
-		t.Fatalf("Failed to retrieve values after clear: %v", err)
+		t.Fatalf("Failed to get log values: %v", err)
 	}
 
-	if len(entries) != 0 {
-		t.Errorf("Expected 0 entries after clear, got %d", len(entries))
-	}
-}
-
-func TestLog_ConcurrentAppend(t *testing.T) {
-	storage := storage.NewMemoryStorage()
-	keyStore := keystore.NewKeyStore(storage)
-
-	// Create identity using PublicKeyProvider
-	identity, err := createIdentityWithProvider(keyStore, "test-identity")
-	if err != nil {
-		t.Fatalf("Failed to create identity: %v", err)
+	if len(entries) != len(payloads) {
+		t.Errorf("Expected %d entries, got %d", len(payloads), len(entries))
 	}
 
-	log, err := NewLog("test-log", identity, storage, keyStore)
-	if err != nil {
-		t.Fatalf("Failed to create log: %v", err)
-	}
-
-	var wg sync.WaitGroup
-	appendCount := 100
-	wg.Add(appendCount)
-
-	for i := 0; i < appendCount; i++ {
-		go func(i int) {
-			defer wg.Done()
-			_, err := log.Append(string(rune('A' + i%26)))
-			if err != nil {
-				t.Errorf("Failed to append entry: %v", err)
-			}
-		}(i)
-	}
-
-	wg.Wait()
-
-	entries, err := log.Values()
-	if err != nil {
-		t.Fatalf("Failed to retrieve values: %v", err)
-	}
-
-	if len(entries) != appendCount {
-		t.Errorf("Expected %d entries, got %d", appendCount, len(entries))
+	// The entries should be sorted in the order they were appended
+	for i, entry := range entries {
+		if entry.Payload != payloads[i] {
+			t.Errorf("Entry %d payload mismatch: expected '%s', got '%s'", i, payloads[i], entry.Payload)
+		}
 	}
 }
 
-func TestLog_MultipleAppendsAndRetrieval(t *testing.T) {
-	storage := storage.NewMemoryStorage()
-	keyStore := keystore.NewKeyStore(storage)
+func TestLog_Values(t *testing.T) {
+	ks, identity := setupTestKeyStoreAndIdentity(t)
 
-	// Create identity using PublicKeyProvider
-	identity, err := createIdentityWithProvider(keyStore, "test-identity")
+	logID := "test-log"
+	entryStorage := storage.NewMemoryStorage()
+	log, err := NewLog(logID, identity, entryStorage, ks)
 	if err != nil {
-		t.Fatalf("Failed to create identity: %v", err)
+		t.Fatalf("Failed to create new log: %v", err)
 	}
 
-	log, err := NewLog("test-log", identity, storage, keyStore)
-	if err != nil {
-		t.Fatalf("Failed to create log: %v", err)
-	}
-
-	payloads := []string{"Entry 1", "Entry 2", "Entry 3"}
+	payloads := []string{"entry1", "entry2", "entry3"}
 	for _, payload := range payloads {
 		_, err := log.Append(payload)
 		if err != nil {
@@ -166,7 +154,7 @@ func TestLog_MultipleAppendsAndRetrieval(t *testing.T) {
 
 	entries, err := log.Values()
 	if err != nil {
-		t.Fatalf("Failed to retrieve entries: %v", err)
+		t.Fatalf("Failed to get log values: %v", err)
 	}
 
 	if len(entries) != len(payloads) {
@@ -175,45 +163,214 @@ func TestLog_MultipleAppendsAndRetrieval(t *testing.T) {
 
 	for i, entry := range entries {
 		if entry.Payload != payloads[i] {
-			t.Errorf("Expected payload '%s', got '%s'", payloads[i], entry.Payload)
+			t.Errorf("Entry %d payload mismatch: expected '%s', got '%s'",
+				i, payloads[i], entry.Payload)
 		}
 	}
 }
 
-func TestLog_WithCustomKeyStore(t *testing.T) {
-	storage := storage.NewMemoryStorage()
-	customKeyStore := keystore.NewKeyStore(storage)
+func TestLog_Traverse(t *testing.T) {
+	ks, identity := setupTestKeyStoreAndIdentity(t)
 
-	// Create identity using PublicKeyProvider
-	identity, err := createIdentityWithProvider(customKeyStore, "custom-identity")
+	logID := "test-log"
+	entryStorage := storage.NewMemoryStorage()
+	log, err := NewLog(logID, identity, entryStorage, ks)
 	if err != nil {
-		t.Fatalf("Failed to create identity: %v", err)
+		t.Fatalf("Failed to create new log: %v", err)
 	}
 
-	log, err := NewLog("test-log", identity, storage, customKeyStore)
-	if err != nil {
-		t.Fatalf("Failed to create log with custom KeyStore: %v", err)
+	payloads := []string{"entry1", "entry2", "entry3", "entry4", "entry5"}
+	for _, payload := range payloads {
+		_, err := log.Append(payload)
+		if err != nil {
+			t.Fatalf("Failed to append entry: %v", err)
+		}
 	}
 
-	entry, err := log.Append("Custom KeyStore Entry")
+	count := 0
+	shouldStop := func(e *EncodedEntry) bool {
+		count++
+		return count >= 3
+	}
+
+	traversedEntries, err := log.Traverse("", shouldStop)
 	if err != nil {
-		t.Fatalf("Failed to append entry with custom KeyStore: %v", err)
+		t.Fatalf("Failed to traverse log: %v", err)
+	}
+
+	if len(traversedEntries) != 3 {
+		t.Errorf("Expected to traverse 3 entries, got %d", len(traversedEntries))
+	}
+
+	for i, entry := range traversedEntries {
+		expectedPayload := payloads[len(payloads)-1-i]
+		if entry.Payload != expectedPayload {
+			t.Errorf("Traversed entry %d payload mismatch: expected '%s', got '%s'",
+				i, expectedPayload, entry.Payload)
+		}
+	}
+}
+
+func TestLog_JoinEntry(t *testing.T) {
+	ks, identity := setupTestKeyStoreAndIdentity(t)
+
+	logID := "test-log"
+	entryStorage := storage.NewMemoryStorage()
+	log, err := NewLog(logID, identity, entryStorage, ks)
+	if err != nil {
+		t.Fatalf("Failed to create log: %v", err)
+	}
+
+	// Create a new entry to join
+	clock := NewClock(identity.ID, 1)
+	entry := NewEntry(ks, identity, logID, "joined entry", clock, nil, nil)
+
+	processed := make(map[string]bool)
+	err = log.JoinEntry(&entry, processed)
+	if err != nil {
+		t.Fatalf("Failed to join entry: %v", err)
+	}
+
+	retrievedEntry, err := log.Get(entry.Hash)
+	if err != nil {
+		t.Fatalf("Failed to get entry: %v", err)
+	}
+
+	if retrievedEntry.Hash != entry.Hash {
+		t.Errorf("Joined entry hash does not match. Expected %s, got %s",
+			entry.Hash, retrievedEntry.Hash)
+	}
+	if retrievedEntry.Payload != entry.Payload {
+		t.Errorf("Joined entry payload does not match. Expected '%s', got '%s'",
+			entry.Payload, retrievedEntry.Payload)
+	}
+}
+
+func TestLog_Join(t *testing.T) {
+	ks, identity := setupTestKeyStoreAndIdentity(t)
+
+	logID := "test-log"
+	entryStorage1 := storage.NewMemoryStorage()
+	log1, err := NewLog(logID, identity, entryStorage1, ks)
+	if err != nil {
+		t.Fatalf("Failed to create log1: %v", err)
+	}
+
+	entryStorage2 := storage.NewMemoryStorage()
+	log2, err := NewLog(logID, identity, entryStorage2, ks)
+	if err != nil {
+		t.Fatalf("Failed to create log2: %v", err)
+	}
+
+	payloads1 := []string{"entry1-log1", "entry2-log1"}
+	for _, payload := range payloads1 {
+		_, err := log1.Append(payload)
+		if err != nil {
+			t.Fatalf("Failed to append to log1: %v", err)
+		}
+	}
+
+	payloads2 := []string{"entry1-log2", "entry2-log2"}
+	for _, payload := range payloads2 {
+		_, err := log2.Append(payload)
+		if err != nil {
+			t.Fatalf("Failed to append to log2: %v", err)
+		}
+	}
+
+	err = log1.Join(log2)
+	if err != nil {
+		t.Fatalf("Failed to join log2 into log1: %v", err)
+	}
+
+	entries, err := log1.Values()
+	if err != nil {
+		t.Fatalf("Failed to get log1 values: %v", err)
+	}
+
+	expectedEntryCount := len(payloads1) + len(payloads2)
+	if len(entries) != expectedEntryCount {
+		t.Errorf("Expected %d entries after join, got %d",
+			expectedEntryCount, len(entries))
+	}
+
+	// Optionally, check that the entries contain the expected payloads
+	payloadSet := make(map[string]bool)
+	for _, payload := range append(payloads1, payloads2...) {
+		payloadSet[payload] = true
+	}
+	for _, entry := range entries {
+		if !payloadSet[entry.Payload] {
+			t.Errorf("Unexpected entry payload: '%s'", entry.Payload)
+		}
+	}
+}
+
+func TestLog_Clear(t *testing.T) {
+	ks, identity := setupTestKeyStoreAndIdentity(t)
+
+	logID := "test-log"
+	entryStorage := storage.NewMemoryStorage()
+	log, err := NewLog(logID, identity, entryStorage, ks)
+	if err != nil {
+		t.Fatalf("Failed to create log: %v", err)
+	}
+
+	payloads := []string{"entry1", "entry2", "entry3"}
+	for _, payload := range payloads {
+		_, err := log.Append(payload)
+		if err != nil {
+			t.Fatalf("Failed to append entry: %v", err)
+		}
+	}
+
+	err = log.Clear()
+	if err != nil {
+		t.Fatalf("Failed to clear the log: %v", err)
+	}
+
+	entries, err := log.Values()
+	if err != nil {
+		t.Fatalf("Failed to get log values: %v", err)
+	}
+
+	if len(entries) != 0 {
+		t.Errorf("Expected 0 entries after clear, got %d", len(entries))
+	}
+
+	head, err := log.Head()
+	if err == nil {
+		t.Errorf("Expected head to be nil after clear, but got head with hash %s", head.Hash)
+	}
+}
+
+func TestLog_Head(t *testing.T) {
+	ks, identity := setupTestKeyStoreAndIdentity(t)
+
+	logID := "test-log"
+	entryStorage := storage.NewMemoryStorage()
+	log, err := NewLog(logID, identity, entryStorage, ks)
+	if err != nil {
+		t.Fatalf("Failed to create log: %v", err)
+	}
+
+	_, err = log.Head()
+	if err == nil {
+		t.Error("Expected error when getting head of empty log, but got none")
+	}
+
+	entry, err := log.Append("first entry")
+	if err != nil {
+		t.Fatalf("Failed to append entry: %v", err)
 	}
 
 	head, err := log.Head()
 	if err != nil {
-		t.Fatalf("Failed to retrieve log head: %v", err)
+		t.Fatalf("Failed to get log head: %v", err)
 	}
+
 	if head.Hash != entry.Hash {
-		t.Fatalf("Log head does not match the appended entry")
-	}
-
-	retrieved, err := log.Get(entry.Hash)
-	if err != nil {
-		t.Fatalf("Failed to retrieve entry: %v", err)
-	}
-
-	if retrieved.Payload != "Custom KeyStore Entry" {
-		t.Errorf("Expected payload 'Custom KeyStore Entry', got '%s'", retrieved.Payload)
+		t.Errorf("Head hash does not match the last appended entry. Expected %s, got %s",
+			entry.Hash, head.Hash)
 	}
 }

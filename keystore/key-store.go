@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math/big"
 	"orbitdb/go-orbitdb/storage"
 	"sync"
@@ -128,8 +129,8 @@ func (ks *KeyStore) SignMessage(id string, data []byte) (string, error) {
 }
 
 // VerifyMessage verifies the signature against the data using the public key.
-func (ks *KeyStore) VerifyMessage(publicKey ecdsa.PublicKey, data []byte, signature string) (bool, error) {
-	sigBytes, err := hex.DecodeString(signature)
+func (ks *KeyStore) VerifyMessage(publicKey ecdsa.PublicKey, data []byte, signatureHex string) (bool, error) {
+	sigBytes, err := hex.DecodeString(signatureHex)
 	if err != nil || len(sigBytes) < 64 {
 		return false, err
 	}
@@ -180,4 +181,24 @@ func DeserializePrivateKey(data []byte) (*ecdsa.PrivateKey, error) {
 		},
 		D: d,
 	}, nil
+}
+
+func ReconstructPublicKeyFromHex(pubKeyHex string) (*ecdsa.PublicKey, error) {
+	pubKeyBytes, err := hex.DecodeString(pubKeyHex)
+	if err != nil {
+		return nil, err
+	}
+	if len(pubKeyBytes) != 64 {
+		return nil, fmt.Errorf("invalid public key length: %d", len(pubKeyBytes))
+	}
+	xBytes := pubKeyBytes[:32]
+	yBytes := pubKeyBytes[32:]
+	x := new(big.Int).SetBytes(xBytes)
+	y := new(big.Int).SetBytes(yBytes)
+	pubKey := &ecdsa.PublicKey{
+		Curve: elliptic.P256(),
+		X:     x,
+		Y:     y,
+	}
+	return pubKey, nil
 }

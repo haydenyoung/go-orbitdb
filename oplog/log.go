@@ -14,7 +14,7 @@ import (
 // Log represents an append-only log
 type Log struct {
 	id       string
-	identity identitytypes.Identity
+	identity *identitytypes.Identity
 	clock    Clock
 	head     *EncodedEntry
 	entries  storage.Storage
@@ -51,7 +51,7 @@ func NewLog(id string, identity *identitytypes.Identity, entryStorage storage.St
 
 	return &Log{
 		id:       id,
-		identity: *identity,
+		identity: identity,
 		clock:    NewClock(identity.ID, 0),
 		entries:  entryStorage,
 		keystore: keyStore,
@@ -74,11 +74,7 @@ func (l *Log) Append(payload string) (*EncodedEntry, error) {
 		next = []string{l.head.Hash}
 	}
 
-	identity := &identitytypes.Identity{
-		PublicKey: l.identity.PublicKey,
-		ID:        l.identity.ID,
-	}
-	entry := NewEntry(l.keystore, identity, l.id, payload, l.clock, next, nil)
+	entry := NewEntry(l.keystore, l.identity, l.id, payload, l.clock, next, nil)
 
 	if err := l.entries.Put(entry.Hash, entry.Bytes); err != nil {
 		return nil, fmt.Errorf("failed to store entry: %w", err)
@@ -103,6 +99,10 @@ func (l *Log) Get(hash string) (*EncodedEntry, error) {
 		return nil, fmt.Errorf("failed to decode entry for hash %s: %w", hash, err)
 	}
 
+	if !VerifyEntrySignature(l.keystore, entry) {
+		return nil, fmt.Errorf("invalid signature for entry %s", hash)
+	}
+
 	return &entry, nil
 }
 
@@ -123,6 +123,12 @@ func (l *Log) Values() ([]EncodedEntry, error) {
 			fmt.Printf("Warning: Skipping invalid entry with error: %s\n", err)
 			continue
 		}
+
+		if !VerifyEntrySignature(l.keystore, entry) {
+			fmt.Printf("Warning: Skipping entry with invalid signature: %s\n", entry.Hash)
+			continue
+		}
+
 		entries = append(entries, entry)
 	}
 
@@ -132,6 +138,134 @@ func (l *Log) Values() ([]EncodedEntry, error) {
 	})
 
 	return entries, nil
+}
+
+func (l *Log) Traverse(startHash string, shouldStop func(*EncodedEntry) bool) ([]*EncodedEntry, error) {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+
+	var traversed []*EncodedEntry
+	visited := make(map[string]bool)
+
+	// Start traversal from the specified entry or the current head
+	var stack []*EncodedEntry
+	if startHash != "" {
+		startEntry, err := l.Get(startHash)
+		if err != nil {
+			return nil, fmt.Errorf("failed to start traversal from entry: %w", err)
+		}
+		stack = []*EncodedEntry{startEntry}
+	} else if l.head != nil {
+		stack = []*EncodedEntry{l.head}
+	} else {
+		return nil, errors.New("no starting point for traversal")
+	}
+
+	// Perform the traversal
+	for len(stack) > 0 {
+		// Pop the last element from the stack
+		entry := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+
+		// Skip already visited entries
+		if visited[entry.Hash] {
+			continue
+		}
+
+		// Verify the signature before processing
+		if !VerifyEntrySignature(l.keystore, *entry) {
+			fmt.Printf("Warning: Skipping entry with invalid signature: %s\n", entry.Hash)
+			continue
+		}
+
+		// Mark as visited
+		visited[entry.Hash] = true
+
+		// Add the entry to the traversed list
+		traversed = append(traversed, entry)
+
+		// Apply the stopping condition
+		if shouldStop != nil && shouldStop(entry) {
+			break
+		}
+
+		// Load and add the `next` entries to the stack
+		for _, nextHash := range entry.Entry.Next {
+			nextEntry, err := l.Get(nextHash)
+			if err != nil {
+				fmt.Printf("Warning: Failed to load next entry %s: %s\n", nextHash, err)
+				continue
+			}
+			stack = append(stack, nextEntry)
+		}
+	}
+
+	return traversed, nil
+}
+
+func (l *Log) JoinEntry(entry *EncodedEntry, processed map[string]bool) error {
+	// Check if the entry belongs to the current log
+	if entry.Entry.ID != l.id {
+		return fmt.Errorf("entry ID '%s' does not match log ID '%s'", entry.Entry.ID, l.id)
+	}
+
+	if !VerifyEntrySignature(l.keystore, *entry) {
+		return fmt.Errorf("invalid signature for entry %s", entry.Hash)
+	}
+
+	// Initialize a stack for iterative processing
+	stack := []*EncodedEntry{entry}
+
+	for len(stack) > 0 {
+		// Pop an entry from the stack
+		currentEntry := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+
+		// Check if the entry is already processed
+		if processed[currentEntry.Hash] {
+			continue
+		}
+		processed[currentEntry.Hash] = true
+
+		// Add the entry to storage
+		err := l.entries.Put(currentEntry.Hash, currentEntry.Bytes)
+		if err != nil {
+			return fmt.Errorf("failed to store entry: %w", err)
+		}
+
+		// Update the log head if the new entry has a more recent clock
+		if l.head == nil || CompareClocks(currentEntry.Clock, l.head.Clock) > 0 {
+			l.head = currentEntry
+		}
+	}
+
+	return nil
+}
+
+func (l *Log) Join(otherLog *Log) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	// Check if the other log has the same ID
+	if otherLog.id != l.id {
+		return fmt.Errorf("log ID '%s' does not match other log ID '%s'", l.id, otherLog.id)
+	}
+
+	// Get all entries from the other log
+	otherEntries, err := otherLog.Values()
+	if err != nil {
+		return fmt.Errorf("failed to retrieve entries from other log: %w", err)
+	}
+
+	// Process each entry using the JoinEntry method
+	processed := make(map[string]bool)
+	for _, entry := range otherEntries {
+		if err := l.JoinEntry(&entry, processed); err != nil {
+			fmt.Printf("Warning: Skipping invalid or duplicate entry %s: %v\n", entry.Hash, err)
+		}
+	}
+
+	return nil
 }
 
 // Clear removes all entries from the log
