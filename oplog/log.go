@@ -203,6 +203,71 @@ func (l *Log) Traverse(startHash string, shouldStop func(*EncodedEntry) bool) ([
 	return traversed, nil
 }
 
+func (l *Log) JoinEntry(entry *EncodedEntry, processed map[string]bool) error {
+	// Check if the entry belongs to the current log
+	if entry.Entry.ID != l.id {
+		return fmt.Errorf("entry ID '%s' does not match log ID '%s'", entry.Entry.ID, l.id)
+	}
+
+	if !VerifyEntrySignature(l.keystore, l.identity, *entry) {
+		return fmt.Errorf("invalid signature for entry %s", entry.Hash)
+	}
+
+	// Initialize a stack for iterative processing
+	stack := []*EncodedEntry{entry}
+
+	for len(stack) > 0 {
+		// Pop an entry from the stack
+		currentEntry := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+
+		// Check if the entry is already processed
+		if processed[currentEntry.Hash] {
+			continue
+		}
+		processed[currentEntry.Hash] = true
+
+		// Add the entry to storage
+		err := l.entries.Put(currentEntry.Hash, currentEntry.Bytes)
+		if err != nil {
+			return fmt.Errorf("failed to store entry: %w", err)
+		}
+
+		// Update the log head if the new entry has a more recent clock
+		if l.head == nil || CompareClocks(currentEntry.Clock, l.head.Clock) > 0 {
+			l.head = currentEntry
+		}
+	}
+
+	return nil
+}
+
+func (l *Log) Join(otherLog *Log) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	// Check if the other log has the same ID
+	if otherLog.id != l.id {
+		return fmt.Errorf("log ID '%s' does not match other log ID '%s'", l.id, otherLog.id)
+	}
+
+	// Get all entries from the other log
+	otherEntries, err := otherLog.Values()
+	if err != nil {
+		return fmt.Errorf("failed to retrieve entries from other log: %w", err)
+	}
+
+	// Process each entry using the JoinEntry method
+	processed := make(map[string]bool)
+	for _, entry := range otherEntries {
+		if err := l.JoinEntry(&entry, processed); err != nil {
+			fmt.Printf("Warning: Skipping invalid or duplicate entry %s: %v\n", entry.Hash, err)
+		}
+	}
+
+	return nil
+}
+
 // Clear removes all entries from the log
 func (l *Log) Clear() error {
 	l.mu.Lock()
