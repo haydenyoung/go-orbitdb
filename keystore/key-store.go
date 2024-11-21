@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math/big"
 	"orbitdb/go-orbitdb/storage"
 	"sync"
@@ -180,4 +181,24 @@ func DeserializePrivateKey(data []byte) (*ecdsa.PrivateKey, error) {
 		},
 		D: d,
 	}, nil
+}
+
+func ReconstructPublicKeyFromHex(pubKeyHex string) (*ecdsa.PublicKey, error) {
+	pubKeyBytes, err := hex.DecodeString(pubKeyHex)
+	if err != nil {
+		return nil, err
+	}
+	if len(pubKeyBytes) != 64 {
+		return nil, fmt.Errorf("invalid public key length: %d", len(pubKeyBytes))
+	}
+	xBytes := pubKeyBytes[:32]
+	yBytes := pubKeyBytes[32:]
+	x := new(big.Int).SetBytes(xBytes)
+	y := new(big.Int).SetBytes(yBytes)
+	pubKey := &ecdsa.PublicKey{
+		Curve: elliptic.P256(),
+		X:     x,
+		Y:     y,
+	}
+	return pubKey, nil
 }

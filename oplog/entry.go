@@ -2,9 +2,6 @@ package oplog
 
 import (
 	"bytes"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"encoding/hex"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	"github.com/ipld/go-ipld-prime/datamodel"
@@ -12,7 +9,6 @@ import (
 	"github.com/multiformats/go-multibase"
 	mh "github.com/multiformats/go-multihash"
 	"log"
-	"math/big"
 	"orbitdb/go-orbitdb/identities/identitytypes"
 	"orbitdb/go-orbitdb/keystore"
 	"sort"
@@ -113,23 +109,14 @@ func VerifyEntrySignature(ks *keystore.KeyStore, entry EncodedEntry) bool {
 	// Encode the entry data without the Key, Identity, and Signature fields
 	reconstructedEncodedEntry := Encode(entryData)
 
-	// Decode the public key from the entry
-	pubKeyHex := entry.Entry.Key
-	publicKeyBytes, err := hex.DecodeString(pubKeyHex)
+	pubKey, err := keystore.ReconstructPublicKeyFromHex(entry.Entry.Key)
 	if err != nil {
-		log.Printf("Error decoding public key hex: %v\n", err)
+		log.Printf("Error reconstructing public key: %v\n", err)
 		return false
 	}
 
-	// Reconstruct the ecdsa.PublicKey
-	pubKey := ecdsa.PublicKey{
-		Curve: elliptic.P256(),
-		X:     new(big.Int).SetBytes(publicKeyBytes[:len(publicKeyBytes)/2]),
-		Y:     new(big.Int).SetBytes(publicKeyBytes[len(publicKeyBytes)/2:]),
-	}
-
 	// Verify the signature using the public key from the entry
-	verified, err := ks.VerifyMessage(pubKey, reconstructedEncodedEntry.Bytes, entry.Signature)
+	verified, err := ks.VerifyMessage(*pubKey, reconstructedEncodedEntry.Bytes, entry.Signature)
 	return err == nil && verified
 }
 
