@@ -14,7 +14,7 @@ import (
 // Log represents an append-only log
 type Log struct {
 	id       string
-	identity identitytypes.Identity
+	identity *identitytypes.Identity
 	clock    Clock
 	head     *EncodedEntry
 	entries  storage.Storage
@@ -51,7 +51,7 @@ func NewLog(id string, identity *identitytypes.Identity, entryStorage storage.St
 
 	return &Log{
 		id:       id,
-		identity: *identity,
+		identity: identity,
 		clock:    NewClock(identity.ID, 0),
 		entries:  entryStorage,
 		keystore: keyStore,
@@ -74,11 +74,7 @@ func (l *Log) Append(payload string) (*EncodedEntry, error) {
 		next = []string{l.head.Hash}
 	}
 
-	identity := &identitytypes.Identity{
-		PublicKey: l.identity.PublicKey,
-		ID:        l.identity.ID,
-	}
-	entry := NewEntry(l.keystore, identity, l.id, payload, l.clock, next, nil)
+	entry := NewEntry(l.keystore, l.identity, l.id, payload, l.clock, next, nil)
 
 	if err := l.entries.Put(entry.Hash, entry.Bytes); err != nil {
 		return nil, fmt.Errorf("failed to store entry: %w", err)
