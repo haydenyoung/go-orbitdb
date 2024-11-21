@@ -128,8 +128,8 @@ func (ks *KeyStore) SignMessage(id string, data []byte) (string, error) {
 }
 
 // VerifyMessage verifies the signature against the data using the public key.
-func (ks *KeyStore) VerifyMessage(publicKey ecdsa.PublicKey, data []byte, signature string) (bool, error) {
-	sigBytes, err := hex.DecodeString(signature)
+func (ks *KeyStore) VerifyMessage(publicKey ecdsa.PublicKey, data []byte, signatureHex string) (bool, error) {
+	sigBytes, err := hex.DecodeString(signatureHex)
 	if err != nil || len(sigBytes) < 64 {
 		return false, err
 	}
