@@ -86,12 +86,7 @@ func NewEntry(ks *keystore.KeyStore, identity *identitytypes.Identity, id string
 	entry.Identity = identity.Hash
 	entry.Signature = signature
 
-	return EncodedEntry{
-		Entry: entry,
-		Bytes: encodedEntry.Bytes,
-		CID:   encodedEntry.CID,
-		Hash:  encodedEntry.Hash,
-	}
+	return Encode(entry)
 }
 
 // VerifyEntrySignature verifies the signature on an entry using KeyStore.
