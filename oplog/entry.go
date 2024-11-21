@@ -127,9 +127,31 @@ func IsEntry(entry Entry) bool {
 	return entry.ID != "" && entry.Payload != "" && entry.Clock.ID != "" && entry.Clock.Time > 0
 }
 
-// IsEqual checks if two entries are equal based on their hash values
-func IsEqual(a EncodedEntry, b EncodedEntry) bool {
-	return a.Hash == b.Hash
+// IsEqual checks if two entries are equal. Exclude Signature, Hash, and Bytes from the comparison since they can differ even if the entries have the same content.
+// The reason is The ECDSA algorithm uses a random value (k) during the signing process to ensure that each signature is unique and secure.
+// Even if the same message is signed multiple times with the same private key, the signatures will be different due to this randomness.
+func IsEqual(entry1 EncodedEntry, entry2 EncodedEntry) bool {
+	return entry1.Entry.ID == entry2.Entry.ID &&
+		entry1.Entry.Payload == entry2.Entry.Payload &&
+		EqualStringSlices(entry1.Entry.Next, entry2.Entry.Next) &&
+		EqualStringSlices(entry1.Entry.Refs, entry2.Entry.Refs) &&
+		entry1.Entry.Clock.ID == entry2.Entry.Clock.ID &&
+		entry1.Entry.Clock.Time == entry2.Entry.Clock.Time &&
+		entry1.Entry.V == entry2.Entry.V &&
+		entry1.Entry.Key == entry2.Entry.Key &&
+		entry1.Entry.Identity == entry2.Entry.Identity
+}
+
+func EqualStringSlices(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // Encode encodes the entry into CBOR and returns an EncodedEntry
