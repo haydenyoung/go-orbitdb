@@ -99,7 +99,7 @@ func (l *Log) Get(hash string) (*EncodedEntry, error) {
 		return nil, fmt.Errorf("failed to decode entry for hash %s: %w", hash, err)
 	}
 
-	if !VerifyEntrySignature(l.keystore, l.identity, entry) {
+	if !VerifyEntrySignature(l.keystore, entry) {
 		return nil, fmt.Errorf("invalid signature for entry %s", hash)
 	}
 
@@ -124,7 +124,7 @@ func (l *Log) Values() ([]EncodedEntry, error) {
 			continue
 		}
 
-		if !VerifyEntrySignature(l.keystore, l.identity, entry) {
+		if !VerifyEntrySignature(l.keystore, entry) {
 			fmt.Printf("Warning: Skipping entry with invalid signature: %s\n", entry.Hash)
 			continue
 		}
@@ -173,7 +173,7 @@ func (l *Log) Traverse(startHash string, shouldStop func(*EncodedEntry) bool) ([
 		}
 
 		// Verify the signature before processing
-		if !VerifyEntrySignature(l.keystore, l.identity, *entry) {
+		if !VerifyEntrySignature(l.keystore, *entry) {
 			fmt.Printf("Warning: Skipping entry with invalid signature: %s\n", entry.Hash)
 			continue
 		}
@@ -209,7 +209,7 @@ func (l *Log) JoinEntry(entry *EncodedEntry, processed map[string]bool) error {
 		return fmt.Errorf("entry ID '%s' does not match log ID '%s'", entry.Entry.ID, l.id)
 	}
 
-	if !VerifyEntrySignature(l.keystore, l.identity, *entry) {
+	if !VerifyEntrySignature(l.keystore, *entry) {
 		return fmt.Errorf("invalid signature for entry %s", entry.Hash)
 	}
 
