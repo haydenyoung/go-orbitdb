@@ -99,6 +99,10 @@ func (l *Log) Get(hash string) (*EncodedEntry, error) {
 		return nil, fmt.Errorf("failed to decode entry for hash %s: %w", hash, err)
 	}
 
+	if !VerifyEntrySignature(l.keystore, l.identity, entry) {
+		return nil, fmt.Errorf("invalid signature for entry %s", hash)
+	}
+
 	return &entry, nil
 }
 
@@ -119,6 +123,12 @@ func (l *Log) Values() ([]EncodedEntry, error) {
 			fmt.Printf("Warning: Skipping invalid entry with error: %s\n", err)
 			continue
 		}
+
+		if !VerifyEntrySignature(l.keystore, l.identity, entry) {
+			fmt.Printf("Warning: Skipping entry with invalid signature: %s\n", entry.Hash)
+			continue
+		}
+
 		entries = append(entries, entry)
 	}
 
@@ -161,6 +171,14 @@ func (l *Log) Traverse(startHash string, shouldStop func(*EncodedEntry) bool) ([
 		if visited[entry.Hash] {
 			continue
 		}
+
+		// Verify the signature before processing
+		if !VerifyEntrySignature(l.keystore, l.identity, *entry) {
+			fmt.Printf("Warning: Skipping entry with invalid signature: %s\n", entry.Hash)
+			continue
+		}
+
+		// Mark as visited
 		visited[entry.Hash] = true
 
 		// Add the entry to the traversed list
