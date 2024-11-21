@@ -11,6 +11,7 @@ import (
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/multiformats/go-multibase"
 	mh "github.com/multiformats/go-multihash"
+	"log"
 	"math/big"
 	"orbitdb/go-orbitdb/identities/identitytypes"
 	"orbitdb/go-orbitdb/keystore"
@@ -90,23 +91,33 @@ func NewEntry(ks *keystore.KeyStore, identity *identitytypes.Identity, id string
 }
 
 // VerifyEntrySignature verifies the signature on an entry using KeyStore.
-func VerifyEntrySignature(ks *keystore.KeyStore, identity *identitytypes.Identity, entry EncodedEntry) bool {
+func VerifyEntrySignature(ks *keystore.KeyStore, entry EncodedEntry) bool {
 	// Recreate the entry data without Signature, Key, and Identity fields
 	entryData := Entry{
-		ID:      entry.ID,
-		Payload: entry.Payload,
-		Next:    entry.Next,
-		Refs:    entry.Refs,
-		Clock:   entry.Clock,
-		V:       entry.V,
+		ID:      entry.Entry.ID,
+		Payload: entry.Entry.Payload,
+		Next:    entry.Entry.Next,
+		Refs:    entry.Entry.Refs,
+		Clock:   entry.Entry.Clock,
+		V:       entry.Entry.V,
+	}
+
+	// Ensure that Next and Refs are initialized as empty slices if nil
+	if entryData.Next == nil {
+		entryData.Next = []string{}
+	}
+	if entryData.Refs == nil {
+		entryData.Refs = []string{}
 	}
 
 	// Encode the entry data without the Key, Identity, and Signature fields
 	reconstructedEncodedEntry := Encode(entryData)
 
-	// Decode the hex-encoded public key to reconstruct the ecdsa.PublicKey
-	publicKeyBytes, err := hex.DecodeString(identity.PublicKey)
-	if err != nil || len(publicKeyBytes) < 64 {
+	// Decode the public key from the entry
+	pubKeyHex := entry.Entry.Key
+	publicKeyBytes, err := hex.DecodeString(pubKeyHex)
+	if err != nil {
+		log.Printf("Error decoding public key hex: %v\n", err)
 		return false
 	}
 
@@ -117,7 +128,7 @@ func VerifyEntrySignature(ks *keystore.KeyStore, identity *identitytypes.Identit
 		Y:     new(big.Int).SetBytes(publicKeyBytes[len(publicKeyBytes)/2:]),
 	}
 
-	// Use the KeyStore instance to verify the signature
+	// Verify the signature using the public key from the entry
 	verified, err := ks.VerifyMessage(pubKey, reconstructedEncodedEntry.Bytes, entry.Signature)
 	return err == nil && verified
 }
