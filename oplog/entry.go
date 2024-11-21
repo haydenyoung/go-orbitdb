@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"github.com/ipfs/go-cid"
 	"github.com/ipld/go-ipld-prime/codec/dagcbor"
+	"github.com/ipld/go-ipld-prime/datamodel"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	"github.com/multiformats/go-multibase"
 	mh "github.com/multiformats/go-multihash"
@@ -140,50 +141,52 @@ func IsEqual(a EncodedEntry, b EncodedEntry) bool {
 func Encode(entry Entry) EncodedEntry {
 	// Create a basic map node for encoding
 	nb := basicnode.Prototype__Map{}.NewBuilder()
-	ma, _ := nb.BeginMap(9)
-
-	// Assemble each field
-	ma.AssembleKey().AssignString("id")
-	ma.AssembleValue().AssignString(entry.ID)
-
-	ma.AssembleKey().AssignString("payload")
-	ma.AssembleValue().AssignString(entry.Payload)
-
-	ma.AssembleKey().AssignString("next")
-	na, _ := ma.AssembleValue().BeginList(int64(len(entry.Next)))
-	for _, n := range entry.Next {
-		na.AssembleValue().AssignString(n)
+	ma, err := nb.BeginMap(9)
+	if err != nil {
+		panic(err)
 	}
-	na.Finish()
 
-	ma.AssembleKey().AssignString("refs")
-	ra, _ := ma.AssembleValue().BeginList(int64(len(entry.Refs)))
-	for _, r := range entry.Refs {
-		ra.AssembleValue().AssignString(r)
+	// Assemble each field using helper functions
+	if err := assembleStringField(ma, "id", entry.ID); err != nil {
+		panic(err)
 	}
-	ra.Finish()
 
-	ma.AssembleKey().AssignString("clock")
-	ca, _ := ma.AssembleValue().BeginMap(2)
-	ca.AssembleKey().AssignString("id")
-	ca.AssembleValue().AssignString(entry.Clock.ID)
-	ca.AssembleKey().AssignString("time")
-	ca.AssembleValue().AssignInt(int64(entry.Clock.Time))
-	ca.Finish()
+	if err := assembleStringField(ma, "payload", entry.Payload); err != nil {
+		panic(err)
+	}
 
-	ma.AssembleKey().AssignString("v")
-	ma.AssembleValue().AssignInt(int64(entry.V))
+	if err := assembleStringList(ma, "next", entry.Next); err != nil {
+		panic(err)
+	}
 
-	ma.AssembleKey().AssignString("key")
-	ma.AssembleValue().AssignString(entry.Key)
+	if err := assembleStringList(ma, "refs", entry.Refs); err != nil {
+		panic(err)
+	}
 
-	ma.AssembleKey().AssignString("identity")
-	ma.AssembleValue().AssignString(entry.Identity)
+	if err := assembleClock(ma, "clock", entry.Clock); err != nil {
+		panic(err)
+	}
 
-	ma.AssembleKey().AssignString("sig")
-	ma.AssembleValue().AssignString(entry.Signature)
+	if err := assembleIntField(ma, "v", int64(entry.V)); err != nil {
+		panic(err)
+	}
 
-	ma.Finish()
+	if err := assembleStringField(ma, "key", entry.Key); err != nil {
+		panic(err)
+	}
+
+	if err := assembleStringField(ma, "identity", entry.Identity); err != nil {
+		panic(err)
+	}
+
+	if err := assembleStringField(ma, "sig", entry.Signature); err != nil {
+		panic(err)
+	}
+
+	// Finish assembling the map
+	if err := ma.Finish(); err != nil {
+		panic(err)
+	}
 
 	// Get the final built node
 	node := nb.Build()
@@ -212,8 +215,8 @@ func Encode(entry Entry) EncodedEntry {
 
 // Decode decodes CBOR-encoded data into an EncodedEntry struct
 func Decode(encodedData []byte) (EncodedEntry, error) {
-	// Create a node prototype for decoding
-	nb := basicnode.Prototype__Map{}.NewBuilder()
+	// Create a node builder for decoding
+	nb := basicnode.Prototype.Any.NewBuilder()
 	buf := bytes.NewReader(encodedData)
 
 	// Decode the CBOR data
@@ -222,63 +225,51 @@ func Decode(encodedData []byte) (EncodedEntry, error) {
 	}
 	node := nb.Build()
 
-	// Extract values from the node
-	entry := Entry{}
-	if idNode, err := node.LookupByString("id"); err == nil {
-		id, _ := idNode.AsString()
-		entry.ID = id
+	// Extract values from the node using helper functions
+	var entry Entry
+	var err error
+
+	if entry.ID, err = getString(node, "id"); err != nil {
+		return EncodedEntry{}, err
 	}
-	if payloadNode, err := node.LookupByString("payload"); err == nil {
-		payload, _ := payloadNode.AsString()
-		entry.Payload = payload
+	if entry.Payload, err = getString(node, "payload"); err != nil {
+		return EncodedEntry{}, err
 	}
-	if vNode, err := node.LookupByString("v"); err == nil {
-		v, _ := vNode.AsInt()
-		entry.V = int(v) // Cast int64 to int
+	if v, err := getInt(node, "v"); err == nil {
+		entry.V = int(v)
+	} else {
+		return EncodedEntry{}, err
 	}
-	if keyNode, err := node.LookupByString("key"); err == nil {
-		key, _ := keyNode.AsString()
-		entry.Key = key
+	if entry.Key, err = getString(node, "key"); err != nil {
+		return EncodedEntry{}, err
 	}
-	if identityNode, err := node.LookupByString("identity"); err == nil {
-		identity, _ := identityNode.AsString()
-		entry.Identity = identity
+	if entry.Identity, err = getString(node, "identity"); err != nil {
+		return EncodedEntry{}, err
 	}
-	if sigNode, err := node.LookupByString("sig"); err == nil {
-		sig, _ := sigNode.AsString()
-		entry.Signature = sig
+	if entry.Signature, err = getString(node, "sig"); err != nil {
+		return EncodedEntry{}, err
 	}
 
 	// Decode nested Clock
-	if clockNode, err := node.LookupByString("clock"); err == nil {
-		clock := Clock{}
-		if clockIDNode, err := clockNode.LookupByString("id"); err == nil {
-			clockID, _ := clockIDNode.AsString()
-			clock.ID = clockID
-		}
-		if clockTimeNode, err := clockNode.LookupByString("time"); err == nil {
-			clockTime, _ := clockTimeNode.AsInt()
-			clock.Time = int(clockTime) // Cast int64 to int
-		}
-		entry.Clock = clock
+	clockNode, err := node.LookupByString("clock")
+	if err != nil {
+		return EncodedEntry{}, err
+	}
+	if entry.Clock.ID, err = getString(clockNode, "id"); err != nil {
+		return EncodedEntry{}, err
+	}
+	if timeVal, err := getInt(clockNode, "time"); err == nil {
+		entry.Clock.Time = int(timeVal)
+	} else {
+		return EncodedEntry{}, err
 	}
 
 	// Decode lists (Next and Refs)
-	if nextNode, err := node.LookupByString("next"); err == nil {
-		nextLen := nextNode.Length()
-		for i := int64(0); i < nextLen; i++ {
-			nNode, _ := nextNode.LookupByIndex(i)
-			n, _ := nNode.AsString()
-			entry.Next = append(entry.Next, n)
-		}
+	if entry.Next, err = getStringList(node, "next"); err != nil {
+		return EncodedEntry{}, err
 	}
-	if refsNode, err := node.LookupByString("refs"); err == nil {
-		refsLen := refsNode.Length()
-		for i := int64(0); i < refsLen; i++ {
-			rNode, _ := refsNode.LookupByIndex(i)
-			r, _ := rNode.AsString()
-			entry.Refs = append(entry.Refs, r)
-		}
+	if entry.Refs, err = getStringList(node, "refs"); err != nil {
+		return EncodedEntry{}, err
 	}
 
 	// Calculate the CID for CBOR-encoded bytes
@@ -287,7 +278,10 @@ func Decode(encodedData []byte) (EncodedEntry, error) {
 		return EncodedEntry{}, err
 	}
 	c := cid.NewCidV1(cid.DagCBOR, hash)
-	hashStr, _ := c.StringOfBase(multibase.Base58BTC)
+	hashStr, err := c.StringOfBase(multibase.Base58BTC)
+	if err != nil {
+		return EncodedEntry{}, err
+	}
 
 	return EncodedEntry{
 		Entry: entry,
@@ -295,6 +289,103 @@ func Decode(encodedData []byte) (EncodedEntry, error) {
 		CID:   c,
 		Hash:  hashStr,
 	}, nil
+}
+
+func assembleStringField(ma datamodel.MapAssembler, key string, value string) error {
+	if err := ma.AssembleKey().AssignString(key); err != nil {
+		return err
+	}
+	if err := ma.AssembleValue().AssignString(value); err != nil {
+		return err
+	}
+	return nil
+}
+
+func assembleIntField(ma datamodel.MapAssembler, key string, value int64) error {
+	if err := ma.AssembleKey().AssignString(key); err != nil {
+		return err
+	}
+	if err := ma.AssembleValue().AssignInt(value); err != nil {
+		return err
+	}
+	return nil
+}
+
+func assembleStringList(ma datamodel.MapAssembler, key string, values []string) error {
+	if err := ma.AssembleKey().AssignString(key); err != nil {
+		return err
+	}
+	la, err := ma.AssembleValue().BeginList(int64(len(values)))
+	if err != nil {
+		return err
+	}
+	for _, v := range values {
+		if err := la.AssembleValue().AssignString(v); err != nil {
+			return err
+		}
+	}
+	if err := la.Finish(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func assembleClock(ma datamodel.MapAssembler, key string, clock Clock) error {
+	if err := ma.AssembleKey().AssignString(key); err != nil {
+		return err
+	}
+	ca, err := ma.AssembleValue().BeginMap(2)
+	if err != nil {
+		return err
+	}
+	if err := assembleStringField(ca, "id", clock.ID); err != nil {
+		return err
+	}
+	if err := assembleIntField(ca, "time", int64(clock.Time)); err != nil {
+		return err
+	}
+	if err := ca.Finish(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func getString(node datamodel.Node, key string) (string, error) {
+	childNode, err := node.LookupByString(key)
+	if err != nil {
+		return "", err
+	}
+	return childNode.AsString()
+}
+
+func getInt(node datamodel.Node, key string) (int64, error) {
+	childNode, err := node.LookupByString(key)
+	if err != nil {
+		return 0, err
+	}
+	return childNode.AsInt()
+}
+
+func getStringList(node datamodel.Node, key string) ([]string, error) {
+	listNode, err := node.LookupByString(key)
+	if err != nil {
+		return nil, err
+	}
+	length := listNode.Length()
+
+	var list []string
+	for i := int64(0); i < length; i++ {
+		itemNode, err := listNode.LookupByIndex(i)
+		if err != nil {
+			return nil, err
+		}
+		str, err := itemNode.AsString()
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, str)
+	}
+	return list, nil
 }
 
 // Helper function to set a default clock if not provided
