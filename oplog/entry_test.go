@@ -18,7 +18,7 @@ func setupTestKeyStoreAndIdentity(t *testing.T) (*keystore.KeyStore, *identityty
 	}
 	ks := keystore.NewKeyStore(lruStorage)
 	provider := providers.NewPublicKeyProvider(ks)
-	identity, err := provider.CreateIdentity("test-id")
+	identity, err := provider.CreateIdentity("test-ID")
 	if err != nil {
 		t.Fatalf("Failed to create identity: %v", err)
 	}
@@ -28,10 +28,10 @@ func setupTestKeyStoreAndIdentity(t *testing.T) (*keystore.KeyStore, *identityty
 func TestNewEntry(t *testing.T) {
 	ks, identity := setupTestKeyStoreAndIdentity(t)
 	clock := Clock{ID: "test-clock", Time: 1}
-	entry := NewEntry(ks, identity, "entry-id", "payload-data", clock, nil, nil)
+	entry := NewEntry(ks, identity, "entry-ID", "payload-data", clock, nil, nil)
 
-	if entry.ID != "entry-id" {
-		t.Errorf("Expected entry ID to be 'entry-id', got '%s'", entry.ID)
+	if entry.ID != "entry-ID" {
+		t.Errorf("Expected entry ID to be 'entry-ID', got '%s'", entry.ID)
 	}
 	if entry.Payload != "payload-data" {
 		t.Errorf("Expected payload to be 'payload-data', got '%s'", entry.Payload)
@@ -50,7 +50,7 @@ func TestNewEntry(t *testing.T) {
 func TestVerifyEntrySignature(t *testing.T) {
 	ks, identity := setupTestKeyStoreAndIdentity(t)
 	clock := Clock{ID: "test-clock", Time: 1}
-	entry := NewEntry(ks, identity, "entry-id", "payload-data", clock, nil, nil)
+	entry := NewEntry(ks, identity, "entry-ID", "payload-data", clock, nil, nil)
 
 	isValid := VerifyEntrySignature(ks, entry)
 	if !isValid {
@@ -67,7 +67,7 @@ func TestVerifyEntrySignature(t *testing.T) {
 
 func TestIsEntry(t *testing.T) {
 	validEntry := Entry{
-		ID:      "entry-id",
+		ID:      "entry-ID",
 		Payload: "payload-data",
 		Clock:   Clock{ID: "test-clock", Time: 1},
 	}
@@ -86,24 +86,24 @@ func TestIsEqual(t *testing.T) {
 	ks, identity := setupTestKeyStoreAndIdentity(t)
 	clock := Clock{ID: "test-clock", Time: 1}
 
-	entry1 := NewEntry(ks, identity, "entry-id", "payload-data", clock, nil, nil)
-	entry2 := NewEntry(ks, identity, "entry-id", "payload-data", clock, nil, nil)
+	entry1 := NewEntry(ks, identity, "entry-ID", "payload-data", clock, nil, nil)
+	entry2 := NewEntry(ks, identity, "entry-ID", "payload-data", clock, nil, nil)
 
-	// Both entries have identical content, so they should have the same serialized bytes
+	// Both Entries have identical content, so they should have the same serialized bytes
 	if !IsEqual(entry1, entry2) {
-		t.Error("Expected entries with identical content to be equal")
+		t.Error("Expected Entries with identical content to be equal")
 	}
 
 	// Create an entry with different content and check equality
-	entry3 := NewEntry(ks, identity, "entry-id", "different-payload", clock, nil, nil)
+	entry3 := NewEntry(ks, identity, "entry-ID", "different-payload", clock, nil, nil)
 	if IsEqual(entry1, entry3) {
-		t.Error("Expected entries with different content to not be equal")
+		t.Error("Expected Entries with different content to not be equal")
 	}
 }
 
 func TestEncode(t *testing.T) {
 	entry := Entry{
-		ID:      "entry-id",
+		ID:      "entry-ID",
 		Payload: "payload-data",
 		Clock:   Clock{ID: "test-clock", Time: 1},
 	}
@@ -121,7 +121,7 @@ func TestEncode(t *testing.T) {
 func TestDecode(t *testing.T) {
 	// Create a sample entry
 	entry := Entry{
-		ID:        "entry-id",
+		ID:        "entry-ID",
 		Payload:   "payload-data",
 		Clock:     Clock{ID: "test-clock", Time: 1},
 		V:         2,

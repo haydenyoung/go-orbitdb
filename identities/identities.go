@@ -66,6 +66,10 @@ func (ids *Identities) CreateIdentity(id string) (*identitytypes.Identity, error
 	return identity, nil
 }
 
+func (ids *Identities) GetIdentity(identityID string) (*identitytypes.Identity, error) {
+	return ids.storage[identityID], nil
+}
+
 // VerifyIdentity verifies the provided identity.
 func (ids *Identities) VerifyIdentity(identity *identitytypes.Identity) bool {
 	verified, _ := ids.provider.VerifyIdentity(identity)
