@@ -15,7 +15,7 @@ import (
 )
 
 type Entry struct {
-	ID        string   `json:"id"`
+	ID        string   `json:"ID"`
 	Payload   string   `json:"payload"`
 	Next      []string `json:"next"`
 	Refs      []string `json:"refs"`
@@ -45,7 +45,7 @@ func NewEntry(ks *keystore.KeyStore, identity *identitytypes.Identity, id string
 		panic("Identity is required, cannot create entry")
 	}
 	if id == "" || payload == "" {
-		panic("Entry requires an id and payload")
+		panic("Entry requires an ID and payload")
 	}
 	// Initialize next and refs as empty slices if nil
 	if next == nil {
@@ -125,7 +125,7 @@ func IsEntry(entry Entry) bool {
 	return entry.ID != "" && entry.Payload != "" && entry.Clock.ID != "" && entry.Clock.Time > 0
 }
 
-// IsEqual checks if two entries are equal. Exclude Signature, Hash, and Bytes from the comparison since they can differ even if the entries have the same content.
+// IsEqual checks if two Entries are equal. Exclude Signature, Hash, and Bytes from the comparison since they can differ even if the Entries have the same content.
 // The reason is The ECDSA algorithm uses a random value (k) during the signing process to ensure that each signature is unique and secure.
 // Even if the same message is signed multiple times with the same private key, the signatures will be different due to this randomness.
 func IsEqual(entry1 EncodedEntry, entry2 EncodedEntry) bool {
@@ -162,7 +162,7 @@ func Encode(entry Entry) EncodedEntry {
 	}
 
 	// Assemble each field using helper functions
-	if err := assembleStringField(ma, "id", entry.ID); err != nil {
+	if err := assembleStringField(ma, "ID", entry.ID); err != nil {
 		panic(err)
 	}
 
@@ -244,7 +244,7 @@ func Decode(encodedData []byte) (EncodedEntry, error) {
 	var entry Entry
 	var err error
 
-	if entry.ID, err = getString(node, "id"); err != nil {
+	if entry.ID, err = getString(node, "ID"); err != nil {
 		return EncodedEntry{}, err
 	}
 	if entry.Payload, err = getString(node, "payload"); err != nil {
@@ -270,7 +270,7 @@ func Decode(encodedData []byte) (EncodedEntry, error) {
 	if err != nil {
 		return EncodedEntry{}, err
 	}
-	if entry.Clock.ID, err = getString(clockNode, "id"); err != nil {
+	if entry.Clock.ID, err = getString(clockNode, "ID"); err != nil {
 		return EncodedEntry{}, err
 	}
 	if timeVal, err := getInt(clockNode, "time"); err == nil {
@@ -353,7 +353,7 @@ func assembleClock(ma datamodel.MapAssembler, key string, clock Clock) error {
 	if err != nil {
 		return err
 	}
-	if err := assembleStringField(ca, "id", clock.ID); err != nil {
+	if err := assembleStringField(ca, "ID", clock.ID); err != nil {
 		return err
 	}
 	if err := assembleIntField(ca, "time", int64(clock.Time)); err != nil {
