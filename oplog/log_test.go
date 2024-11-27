@@ -20,8 +20,8 @@ func TestNewLog(t *testing.T) {
 		t.Fatal("Expected log to be non-nil")
 	}
 
-	if logID != log.id {
-		t.Errorf("Expected log ID to be '%s', got '%s'", logID, log.id)
+	if logID != log.ID {
+		t.Errorf("Expected log ID to be '%s', got '%s'", logID, log.ID)
 	}
 
 	if log.identity != identity {
@@ -87,7 +87,7 @@ func TestLog_AppendAndRetrieve(t *testing.T) {
 		t.Fatalf("Failed to create new log: %v", err)
 	}
 
-	// Step 3: Append multiple entries to the log
+	// Step 3: Append multiple Entries to the log
 	payloads := []string{"first entry", "second entry", "third entry"}
 	appendedEntries := make([]*EncodedEntry, 0, len(payloads))
 
@@ -116,17 +116,17 @@ func TestLog_AppendAndRetrieve(t *testing.T) {
 		}
 	}
 
-	// Step 5: Test the Values method to ensure all entries are correctly stored and ordered
+	// Step 5: Test the Values method to ensure all Entries are correctly stored and ordered
 	entries, err := log.Values()
 	if err != nil {
 		t.Fatalf("Failed to get log values: %v", err)
 	}
 
 	if len(entries) != len(payloads) {
-		t.Errorf("Expected %d entries, got %d", len(payloads), len(entries))
+		t.Errorf("Expected %d Entries, got %d", len(payloads), len(entries))
 	}
 
-	// The entries should be sorted in the order they were appended
+	// The Entries should be sorted in the order they were appended
 	for i, entry := range entries {
 		if entry.Payload != payloads[i] {
 			t.Errorf("Entry %d payload mismatch: expected '%s', got '%s'", i, payloads[i], entry.Payload)
@@ -158,7 +158,7 @@ func TestLog_Values(t *testing.T) {
 	}
 
 	if len(entries) != len(payloads) {
-		t.Errorf("Expected %d entries, got %d", len(payloads), len(entries))
+		t.Errorf("Expected %d Entries, got %d", len(payloads), len(entries))
 	}
 
 	for i, entry := range entries {
@@ -199,7 +199,7 @@ func TestLog_Traverse(t *testing.T) {
 	}
 
 	if len(traversedEntries) != 3 {
-		t.Errorf("Expected to traverse 3 entries, got %d", len(traversedEntries))
+		t.Errorf("Expected to traverse 3 Entries, got %d", len(traversedEntries))
 	}
 
 	for i, entry := range traversedEntries {
@@ -290,11 +290,11 @@ func TestLog_Join(t *testing.T) {
 
 	expectedEntryCount := len(payloads1) + len(payloads2)
 	if len(entries) != expectedEntryCount {
-		t.Errorf("Expected %d entries after join, got %d",
+		t.Errorf("Expected %d Entries after join, got %d",
 			expectedEntryCount, len(entries))
 	}
 
-	// Optionally, check that the entries contain the expected payloads
+	// Optionally, check that the Entries contain the expected payloads
 	payloadSet := make(map[string]bool)
 	for _, payload := range append(payloads1, payloads2...) {
 		payloadSet[payload] = true
@@ -335,7 +335,7 @@ func TestLog_Clear(t *testing.T) {
 	}
 
 	if len(entries) != 0 {
-		t.Errorf("Expected 0 entries after clear, got %d", len(entries))
+		t.Errorf("Expected 0 Entries after clear, got %d", len(entries))
 	}
 
 	head, err := log.Head()

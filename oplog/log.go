@@ -13,11 +13,11 @@ import (
 
 // Log represents an append-only log
 type Log struct {
-	id       string
+	ID       string
 	identity *identitytypes.Identity
 	clock    Clock
 	head     *EncodedEntry
-	entries  storage.Storage
+	Entries  storage.Storage
 	keystore *keystore.KeyStore
 	mu       sync.RWMutex
 }
@@ -50,10 +50,10 @@ func NewLog(id string, identity *identitytypes.Identity, entryStorage storage.St
 	}
 
 	return &Log{
-		id:       id,
+		ID:       id,
 		identity: identity,
 		clock:    NewClock(identity.ID, 0),
-		entries:  entryStorage,
+		Entries:  entryStorage,
 		keystore: keyStore,
 	}, nil
 }
@@ -74,9 +74,9 @@ func (l *Log) Append(payload string) (*EncodedEntry, error) {
 		next = []string{l.head.Hash}
 	}
 
-	entry := NewEntry(l.keystore, l.identity, l.id, payload, l.clock, next, nil)
+	entry := NewEntry(l.keystore, l.identity, l.ID, payload, l.clock, next, nil)
 
-	if err := l.entries.Put(entry.Hash, entry.Bytes); err != nil {
+	if err := l.Entries.Put(entry.Hash, entry.Bytes); err != nil {
 		return nil, fmt.Errorf("failed to store entry: %w", err)
 	}
 
@@ -89,7 +89,7 @@ func (l *Log) Get(hash string) (*EncodedEntry, error) {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 
-	data, err := l.entries.Get(hash)
+	data, err := l.Entries.Get(hash)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get entry for hash %s: %w", hash, err)
 	}
@@ -106,15 +106,15 @@ func (l *Log) Get(hash string) (*EncodedEntry, error) {
 	return &entry, nil
 }
 
-// Values retrieves all entries in the log, sorted using CompareClocks
+// Values retrieves all Entries in the log, sorted using CompareClocks
 func (l *Log) Values() ([]EncodedEntry, error) {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 
 	entries := make([]EncodedEntry, 0)
-	ch, err := l.entries.Iterator()
+	ch, err := l.Entries.Iterator()
 	if err != nil {
-		return nil, fmt.Errorf("failed to iterate over entries: %w", err)
+		return nil, fmt.Errorf("failed to iterate over Entries: %w", err)
 	}
 
 	for kv := range ch {
@@ -132,7 +132,7 @@ func (l *Log) Values() ([]EncodedEntry, error) {
 		entries = append(entries, entry)
 	}
 
-	// Sort entries using CompareClocks
+	// Sort Entries using CompareClocks
 	sort.Slice(entries, func(i, j int) bool {
 		return CompareClocks(entries[i].Clock, entries[j].Clock) < 0
 	})
@@ -167,7 +167,7 @@ func (l *Log) Traverse(startHash string, shouldStop func(*EncodedEntry) bool) ([
 		entry := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
 
-		// Skip already visited entries
+		// Skip already visited Entries
 		if visited[entry.Hash] {
 			continue
 		}
@@ -189,7 +189,7 @@ func (l *Log) Traverse(startHash string, shouldStop func(*EncodedEntry) bool) ([
 			break
 		}
 
-		// Load and add the `next` entries to the stack
+		// Load and add the `next` Entries to the stack
 		for _, nextHash := range entry.Entry.Next {
 			nextEntry, err := l.Get(nextHash)
 			if err != nil {
@@ -205,8 +205,8 @@ func (l *Log) Traverse(startHash string, shouldStop func(*EncodedEntry) bool) ([
 
 func (l *Log) JoinEntry(entry *EncodedEntry, processed map[string]bool) error {
 	// Check if the entry belongs to the current log
-	if entry.Entry.ID != l.id {
-		return fmt.Errorf("entry ID '%s' does not match log ID '%s'", entry.Entry.ID, l.id)
+	if entry.Entry.ID != l.ID {
+		return fmt.Errorf("entry ID '%s' does not match log ID '%s'", entry.Entry.ID, l.ID)
 	}
 
 	if !VerifyEntrySignature(l.keystore, *entry) {
@@ -228,7 +228,7 @@ func (l *Log) JoinEntry(entry *EncodedEntry, processed map[string]bool) error {
 		processed[currentEntry.Hash] = true
 
 		// Add the entry to storage
-		err := l.entries.Put(currentEntry.Hash, currentEntry.Bytes)
+		err := l.Entries.Put(currentEntry.Hash, currentEntry.Bytes)
 		if err != nil {
 			return fmt.Errorf("failed to store entry: %w", err)
 		}
@@ -247,14 +247,14 @@ func (l *Log) Join(otherLog *Log) error {
 	defer l.mu.Unlock()
 
 	// Check if the other log has the same ID
-	if otherLog.id != l.id {
-		return fmt.Errorf("log ID '%s' does not match other log ID '%s'", l.id, otherLog.id)
+	if otherLog.ID != l.ID {
+		return fmt.Errorf("log ID '%s' does not match other log ID '%s'", l.ID, otherLog.ID)
 	}
 
-	// Get all entries from the other log
+	// Get all Entries from the other log
 	otherEntries, err := otherLog.Values()
 	if err != nil {
-		return fmt.Errorf("failed to retrieve entries from other log: %w", err)
+		return fmt.Errorf("failed to retrieve Entries from other log: %w", err)
 	}
 
 	// Process each entry using the JoinEntry method
@@ -268,13 +268,13 @@ func (l *Log) Join(otherLog *Log) error {
 	return nil
 }
 
-// Clear removes all entries from the log
+// Clear removes all Entries from the log
 func (l *Log) Clear() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	if err := l.entries.Clear(); err != nil {
-		return fmt.Errorf("failed to clear entries: %w", err)
+	if err := l.Entries.Clear(); err != nil {
+		return fmt.Errorf("failed to clear Entries: %w", err)
 	}
 
 	l.head = nil
@@ -298,5 +298,5 @@ func (l *Log) Close() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	return l.entries.Close()
+	return l.Entries.Close()
 }
