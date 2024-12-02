@@ -4,12 +4,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"orbitdb/go-orbitdb/identities/identitytypes"
 	"orbitdb/go-orbitdb/keystore"
 	"orbitdb/go-orbitdb/oplog"
 	"orbitdb/go-orbitdb/storage"
 	orbitsync "orbitdb/go-orbitdb/syncutils"
 	"sync"
+
+	pubsub "github.com/libp2p/go-libp2p-pubsub"
 )
 
 // Database represents the base class for all database types.
@@ -76,8 +80,21 @@ func NewDatabase(
 	// Start processing the task queue
 	go db.processTaskQueue()
 
-	// Initialize Sync (using stubbed implementation)
-	db.Sync, err = syncutils.NewSync(nil, log, db.Events, db.ApplyOperation, false)
+	// Create a wrapper function for ApplyOperation
+	onSynced := func(peerID peer.ID, entry oplog.EncodedEntry) {
+		// Convert oplog.EncodedEntry to its serialized form (e.g., []byte)
+		data, err := json.Marshal(entry)
+		if err != nil {
+			fmt.Printf("Error marshaling entry from peer %s: %v\n", peerID, err)
+			return
+		}
+
+		// Call db.ApplyOperation with the serialized data
+		db.ApplyOperation(data)
+	}
+
+	// Use the wrapper function in NewSync
+	db.Sync, err = orbitsync.NewSync(host, pubsub, log, onSynced)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize sync: %w", err)
 	}
