@@ -53,9 +53,9 @@ func TestNewDatabase(t *testing.T) {
 	ks, identity := setupTestKeyStoreAndIdentity(t)
 
 	entryStorage := storage.NewMemoryStorage()
-	host, ps := setupLibp2pHostAndPubSub(t)
+	host1, ps := setupLibp2pHostAndPubSub(t)
 
-	db, err := databases.NewDatabase("test-address", "test-db", identity, entryStorage, ks, host, ps)
+	db, err := databases.NewDatabase("test-address", "test-db", identity, entryStorage, ks, host1, ps)
 	require.NoError(t, err)
 	require.NotNil(t, db)
 
@@ -72,9 +72,9 @@ func TestAddOperation(t *testing.T) {
 	ks, identity := setupTestKeyStoreAndIdentity(t)
 
 	entryStorage := storage.NewMemoryStorage()
-	host, ps := setupLibp2pHostAndPubSub(t)
+	host1, ps := setupLibp2pHostAndPubSub(t)
 
-	db, err := databases.NewDatabase("test-address", "test-db", identity, entryStorage, ks, host, ps)
+	db, err := databases.NewDatabase("test-address", "test-db", identity, entryStorage, ks, host1, ps)
 	require.NoError(t, err)
 
 	op := map[string]string{"key": "test", "value": "123"}
@@ -98,9 +98,9 @@ func TestAddOperationSerializationError(t *testing.T) {
 	ks, identity := setupTestKeyStoreAndIdentity(t)
 
 	entryStorage := storage.NewMemoryStorage()
-	host, ps := setupLibp2pHostAndPubSub(t)
+	host1, ps := setupLibp2pHostAndPubSub(t)
 
-	db, err := databases.NewDatabase("test-address", "test-db", identity, entryStorage, ks, host, ps)
+	db, err := databases.NewDatabase("test-address", "test-db", identity, entryStorage, ks, host1, ps)
 	require.NoError(t, err)
 
 	_, err = db.AddOperation(make(chan int))
@@ -114,11 +114,11 @@ func TestApplyOperation(t *testing.T) {
 
 	// Create the in-memory storage
 	entryStorage := storage.NewMemoryStorage()
-	host, ps := setupLibp2pHostAndPubSub(t)
+	host1, ps := setupLibp2pHostAndPubSub(t)
 
 	// Log ID and database setup
 	logID := "test-log"
-	db, err := databases.NewDatabase(logID, "test-db", identity, entryStorage, ks, host, ps)
+	db, err := databases.NewDatabase(logID, "test-db", identity, entryStorage, ks, host1, ps)
 	require.NoError(t, err)
 
 	// Create a payload for the test entry
@@ -151,9 +151,9 @@ func TestClose(t *testing.T) {
 	ks, identity := setupTestKeyStoreAndIdentity(t)
 
 	entryStorage := storage.NewMemoryStorage()
-	host, ps := setupLibp2pHostAndPubSub(t)
+	host1, ps := setupLibp2pHostAndPubSub(t)
 
-	db, err := databases.NewDatabase("test-address", "test-db", identity, entryStorage, ks, host, ps)
+	db, err := databases.NewDatabase("test-address", "test-db", identity, entryStorage, ks, host1, ps)
 	require.NoError(t, err)
 
 	err = db.Close()
