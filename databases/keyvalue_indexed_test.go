@@ -40,11 +40,16 @@ func setupKeyValueIndexedTest(t *testing.T) *databases.KeyValueIndexed {
 	require.NotNil(t, indexStorage)
 
 	// Set up libp2p host and pubsub
-	host, ps := setupHostAndPubsub(t)
-	defer host.Close()
+	host1, ps := setupHostAndPubsub(t)
+	defer func(host1 host.Host) {
+		err := host1.Close()
+		if err != nil {
+
+		}
+	}(host1)
 
 	// Create the base KeyValue database
-	baseDB, err := databases.NewKeyValue("test-address", "test-db", identity, entryStorage, keyStore, host, ps)
+	baseDB, err := databases.NewKeyValue("test-address", "test-db", identity, entryStorage, keyStore, host1, ps)
 	require.NoError(t, err)
 
 	// Create the KeyValueIndexed database using the BaseDB and indexStorage
