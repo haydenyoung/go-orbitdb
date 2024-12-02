@@ -8,7 +8,7 @@ import (
 	"orbitdb/go-orbitdb/keystore"
 	"orbitdb/go-orbitdb/oplog"
 	"orbitdb/go-orbitdb/storage"
-	"orbitdb/go-orbitdb/syncutils"
+	orbitsync "orbitdb/go-orbitdb/syncutils"
 	"sync"
 )
 
@@ -16,19 +16,26 @@ import (
 type Database struct {
 	Address     string
 	Name        string
-	Identity    *identitytypes.Identity // Replace with your Identity type
-	Meta        map[string]interface{}  // Metadata for the database
-	Log         *oplog.Log              // Append-only log for data storage
-	Sync        *syncutils.Sync         // Synchronization stub
-	Events      chan interface{}        // Event channel for emitting updates
-	taskQueue   chan func()             // Channel for sequential task execution
-	stopChannel chan struct{}           // Channel for stopping background tasks
-	mu          sync.Mutex              // Mutex for thread safety
+	Identity    *identitytypes.Identity
+	Meta        map[string]interface{}
+	Log         *oplog.Log
+	Sync        *orbitsync.Sync
+	Events      chan interface{}
+	taskQueue   chan func()
+	stopChannel chan struct{}
+	mu          sync.Mutex
 }
 
 // NewDatabase creates a new Database instance.
-func NewDatabase(address, name string, identity *identitytypes.Identity, entryStorage storage.Storage, keyStore *keystore.KeyStore) (*Database, error) {
-	// Validate address
+func NewDatabase(
+	address, name string,
+	identity *identitytypes.Identity,
+	entryStorage storage.Storage,
+	keyStore *keystore.KeyStore,
+	host host.Host,
+	pubsub *pubsub.PubSub,
+) (*Database, error) {
+	// Validate inputs
 	if address == "" {
 		return nil, fmt.Errorf("address is required")
 	}
@@ -122,7 +129,7 @@ func (db *Database) AddOperation(op interface{}) (string, error) {
 		}
 
 		// Add the entry to sync
-		if syncErr := db.Sync.Add(entry); syncErr != nil {
+		if syncErr := db.Sync.Add(*entry); syncErr != nil {
 			result.err = fmt.Errorf("failed to sync entry: %w", syncErr)
 			resultChan <- result
 			return
@@ -165,10 +172,16 @@ func serializeOperation(op interface{}) (string, error) {
 
 // Close stops the database's operations and cleans up resources.
 func (db *Database) Close() error {
-	close(db.stopChannel) // Stop task processing
-	db.Sync.Stop()        // Stop synchronization
-	db.Log.Close()        // Close the oplog
-	close(db.Events)      // Close the event channel
+	close(db.stopChannel)
+	err := db.Sync.Stop()
+	if err != nil {
+		return err
+	}
+	err = db.Log.Close()
+	if err != nil {
+		return err
+	}
+	close(db.Events)
 	return nil
 }
 
