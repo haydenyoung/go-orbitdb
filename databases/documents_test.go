@@ -128,9 +128,18 @@ func TestDocuments_All(t *testing.T) {
 	docs := setupDocumentsTest(t)
 
 	// Add multiple documents
-	docs.Put(map[string]interface{}{"_id": "doc1", "type": "test", "value": 10})
-	docs.Put(map[string]interface{}{"_id": "doc2", "type": "test", "value": 20})
-	docs.Put(map[string]interface{}{"_id": "doc3", "type": "other", "value": 30})
+	_, err := docs.Put(map[string]interface{}{"_id": "doc1", "type": "test", "value": 10})
+	if err != nil {
+		return
+	}
+	_, err = docs.Put(map[string]interface{}{"_id": "doc2", "type": "test", "value": 20})
+	if err != nil {
+		return
+	}
+	_, err = docs.Put(map[string]interface{}{"_id": "doc3", "type": "other", "value": 30})
+	if err != nil {
+		return
+	}
 
 	// Retrieve all documents
 	all, err := docs.All()
