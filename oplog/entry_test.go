@@ -2,6 +2,7 @@ package oplog
 
 import (
 	"bytes"
+	"github.com/stretchr/testify/require"
 	"orbitdb/go-orbitdb/keystore"
 	"orbitdb/go-orbitdb/storage"
 	"testing"
@@ -12,13 +13,17 @@ import (
 
 func setupTestKeyStoreAndIdentity(t *testing.T) (*keystore.KeyStore, *identitytypes.Identity) {
 	// Use LRUStorage as the storage backend for testing
-	lruStorage, err := storage.NewLRUStorage(100)
-	if err != nil {
-		panic(err) // Ensure setup failure is immediately apparent
-	}
-	ks := keystore.NewKeyStore(lruStorage)
+	ks := keystore.NewKeyStore(storage.NewMemoryStorage())
+	require.NotNil(t, ks, "Keystore should not be nil")
 	provider := providers.NewPublicKeyProvider(ks)
 	identity, err := provider.CreateIdentity("test-ID")
+	// Ensure the keystore has the key for this identity
+	hasKey := ks.HasKey(identity.ID)
+	require.NoError(t, err, "Failed to check if keystore has key")
+	if !hasKey {
+		_, err := ks.CreateKey(identity.ID)
+		require.NoError(t, err, "Failed to create key in keystore")
+	}
 	if err != nil {
 		t.Fatalf("Failed to create identity: %v", err)
 	}
