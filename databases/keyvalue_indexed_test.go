@@ -1,16 +1,33 @@
 package databases_test
 
 import (
+	"context"
 	"fmt"
 	"orbitdb/go-orbitdb/databases"
 	"orbitdb/go-orbitdb/storage"
 	"testing"
 
+	"github.com/libp2p/go-libp2p"
+	pubsub "github.com/libp2p/go-libp2p-pubsub"
+	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// Setup function for KeyValueIndexed
+// setupHostAndPubsub initializes a libp2p host and pubsub instance for testing.
+func setupHostAndPubsub(t *testing.T) (host.Host, *pubsub.PubSub) {
+	// Create a libp2p host
+	h, err := libp2p.New()
+	require.NoError(t, err)
+
+	// Create a pubsub instance
+	ps, err := pubsub.NewGossipSub(context.Background(), h)
+	require.NoError(t, err)
+
+	return h, ps
+}
+
+// setupKeyValueIndexedTest initializes a KeyValueIndexed instance for testing.
 func setupKeyValueIndexedTest(t *testing.T) *databases.KeyValueIndexed {
 	// Create a mock in-memory KeyStore
 	keyStore, identity := setupTestKeyStoreAndIdentity(t)
@@ -22,17 +39,21 @@ func setupKeyValueIndexedTest(t *testing.T) *databases.KeyValueIndexed {
 	require.NotNil(t, entryStorage)
 	require.NotNil(t, indexStorage)
 
+	// Set up libp2p host and pubsub
+	host, ps := setupHostAndPubsub(t)
+	defer host.Close()
+
 	// Create the base KeyValue database
-	baseDB, err := databases.NewKeyValue("test-address", "test-db", identity, entryStorage, keyStore)
+	baseDB, err := databases.NewKeyValue("test-address", "test-db", identity, entryStorage, keyStore, host, ps)
 	require.NoError(t, err)
 
 	// Create the KeyValueIndexed database using the BaseDB and indexStorage
 	kvi, err := databases.NewKeyValueIndexed(baseDB, indexStorage)
 	require.NoError(t, err)
 
-	// Ensure index is updated after operations
+	// Update the index after initialization
 	err = kvi.UpdateIndex()
-	require.NoError(t, err, "Initial index update failed")
+	require.NoError(t, err, "Failed to update index after initialization")
 
 	return kvi
 }
