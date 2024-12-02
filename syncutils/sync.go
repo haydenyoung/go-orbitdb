@@ -4,19 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
-	"sync"
-	"time"
-
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"log"
 	"orbitdb/go-orbitdb/oplog"
+	"sync"
 )
 
 const (
-	DefaultTimeout         = 30 * time.Second
-	MaxMessageSize         = 4096 // Adjust as needed for your log entry size
 	DefaultEventBufferSize = 100
 )
 
