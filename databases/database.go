@@ -4,16 +4,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p/core/host"
-	"github.com/libp2p/go-libp2p/core/peer"
 	"orbitdb/go-orbitdb/identities/identitytypes"
 	"orbitdb/go-orbitdb/keystore"
 	"orbitdb/go-orbitdb/oplog"
 	"orbitdb/go-orbitdb/storage"
 	orbitsync "orbitdb/go-orbitdb/syncutils"
 	"sync"
-
-	pubsub "github.com/libp2p/go-libp2p-pubsub"
 )
 
 // Database represents the base class for all database types.
@@ -65,7 +63,7 @@ func NewDatabase(
 		return nil, fmt.Errorf("failed to initialize oplog: %w", err)
 	}
 
-	// Create the database instance
+	// Initialize the database instance
 	db := &Database{
 		Address:     address,
 		Name:        name,
@@ -80,24 +78,15 @@ func NewDatabase(
 	// Start processing the task queue
 	go db.processTaskQueue()
 
-	// Create a wrapper function for ApplyOperation
-	onSynced := func(peerID peer.ID, entry oplog.EncodedEntry) {
-		// Convert oplog.EncodedEntry to its serialized form (e.g., []byte)
-		data, err := json.Marshal(entry)
-		if err != nil {
-			fmt.Printf("Error marshaling entry from peer %s: %v\n", peerID, err)
-			return
-		}
-
-		// Call db.ApplyOperation with the serialized data
-		db.ApplyOperation(data)
-	}
-
-	// Use the wrapper function in NewSync
-	db.Sync, err = orbitsync.NewSync(host, pubsub, log, onSynced)
+	// Initialize Sync with the provided host and pubsub
+	db.Sync = orbitsync.NewSync(host, pubsub, log)
+	err = db.Sync.Start()
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize sync: %w", err)
+		return nil, fmt.Errorf("failed to start sync: %w", err)
 	}
+
+	// Listen for synchronized entries
+	go db.listenForSyncUpdates()
 
 	return db, nil
 }
@@ -107,12 +96,17 @@ func (db *Database) processTaskQueue() {
 	for {
 		select {
 		case task := <-db.taskQueue:
-			fmt.Println("processTaskQueue: Executing task")
 			task()
 		case <-db.stopChannel:
-			fmt.Println("processTaskQueue: Stopping task processing")
 			return
 		}
+	}
+}
+
+// listenForSyncUpdates listens to updates from the Sync component.
+func (db *Database) listenForSyncUpdates() {
+	for synced := range db.Sync.SyncedCh {
+		db.ApplyOperation(synced.Entry.Bytes)
 	}
 }
 
@@ -146,7 +140,7 @@ func (db *Database) AddOperation(op interface{}) (string, error) {
 		}
 
 		// Add the entry to sync
-		if syncErr := db.Sync.Add(*entry); syncErr != nil {
+		if syncErr := db.Sync.Add(entry.Payload); syncErr != nil {
 			result.err = fmt.Errorf("failed to sync entry: %w", syncErr)
 			resultChan <- result
 			return
@@ -190,11 +184,8 @@ func serializeOperation(op interface{}) (string, error) {
 // Close stops the database's operations and cleans up resources.
 func (db *Database) Close() error {
 	close(db.stopChannel)
-	err := db.Sync.Stop()
-	if err != nil {
-		return err
-	}
-	err = db.Log.Close()
+	db.Sync.Stop()
+	err := db.Log.Close()
 	if err != nil {
 		return err
 	}
@@ -217,15 +208,12 @@ func (db *Database) Drop() error {
 // ApplyOperation applies an operation received via synchronization.
 func (db *Database) ApplyOperation(data []byte) {
 	task := func() {
-		fmt.Println("applyOperation: task started")
-
 		// Decode the received data into an entry
 		entry, err := oplog.Decode(data)
 		if err != nil {
 			fmt.Printf("applyOperation: failed to decode data: %v\n", err)
 			return
 		}
-		fmt.Printf("applyOperation: data decoded, entry ID: %s\n", entry.Entry.ID)
 
 		// Ensure entry belongs to the same log
 		if entry.Entry.ID != db.Log.ID {
@@ -233,7 +221,7 @@ func (db *Database) ApplyOperation(data []byte) {
 			return
 		}
 
-		// Create a processed map for JoinEntry
+		// Join the entry into the log
 		processed := make(map[string]bool)
 
 		// Join the entry into the log
@@ -241,12 +229,10 @@ func (db *Database) ApplyOperation(data []byte) {
 			fmt.Printf("applyOperation: failed to join entry: %v\n", joinErr)
 			return
 		}
-		fmt.Println("applyOperation: entry joined successfully")
 
 		// Emit the update event safely
 		select {
 		case db.Events <- &entry:
-			fmt.Println("applyOperation: event emitted")
 		default:
 			// Log or handle the case where Events channel is full
 			fmt.Println("applyOperation: Events channel full, event dropped")
