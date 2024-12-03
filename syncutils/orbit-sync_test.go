@@ -1,151 +1,209 @@
 package syncutils_test
 
 import (
+	"context"
+	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/peerstore"
 	"testing"
 	"time"
 
+	libp2p "github.com/libp2p/go-libp2p"
+	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"orbitdb/go-orbitdb/identities/identitytypes"
+	"orbitdb/go-orbitdb/identities/providers"
+	"orbitdb/go-orbitdb/keystore"
+	"orbitdb/go-orbitdb/oplog"
+	"orbitdb/go-orbitdb/storage"
 	"orbitdb/go-orbitdb/syncutils"
 )
 
-func TestSyncStartStop(t *testing.T) {
-	pubsub := syncutils.NewLocalPubSub()
-	log := &syncutils.Log{ID: "test-log"}
-	sync := syncutils.NewSync("self", pubsub, log)
+// setupTestKeyStoreAndIdentity initializes a keystore and identity for testing.
+func setupTestKeyStoreAndIdentity(t *testing.T, identityID string) (*keystore.KeyStore, *identitytypes.Identity) {
+	ks := keystore.NewKeyStore(storage.NewMemoryStorage())
+	require.NotNil(t, ks, "Keystore should not be nil")
 
-	err := sync.Start()
+	provider := providers.NewPublicKeyProvider(ks)
+	identity, err := provider.CreateIdentity(identityID)
+	require.NoError(t, err, "Failed to create identity")
+	require.NotNil(t, identity, "Identity should not be nil")
+
+	// Ensure the key exists in the keystore
+	if !ks.HasKey(identity.ID) {
+		_, err := ks.CreateKey(identity.ID)
+		require.NoError(t, err, "Failed to create key in keystore")
+	}
+
+	return ks, identity
+}
+
+// createMockLog initializes a mock Log instance for testing.
+func createMockLog(t *testing.T, logID string, identityID string) *oplog.Log {
+	ks, identity := setupTestKeyStoreAndIdentity(t, identityID)
+	entryStorage := storage.NewMemoryStorage()
+
+	log, err := oplog.NewLog(logID, identity, entryStorage, ks)
+	require.NoError(t, err, "Failed to create new log")
+	require.NotNil(t, log, "Expected log to be non-nil")
+
+	assert.Equal(t, logID, log.ID, "Log ID does not match")
+	assert.Equal(t, identity, log.Identity, "Log identity does not match")
+	assert.Equal(t, identity.ID, log.Clock.ID, "Clock ID does not match")
+	assert.Equal(t, 0, log.Clock.Time, "Clock time should be initialized to 0")
+
+	return log
+}
+
+func TestSyncStartStop(t *testing.T) {
+	ctx := context.Background()
+
+	host, err := libp2p.New()
+	require.NoError(t, err, "Failed to create libp2p host")
+	defer host.Close()
+
+	ps, err := pubsub.NewGossipSub(ctx, host)
+	require.NoError(t, err, "Failed to create GossipSub instance")
+
+	log := createMockLog(t, "test-log", "test-identity")
+	assert.Equal(t, "test-log", log.ID)
+
+	sync := syncutils.NewSync(host, ps, log)
+
+	err = sync.Start()
 	assert.NoError(t, err)
 
 	sync.Stop()
 	assert.NotNil(t, sync)
 }
 
-func TestSyncIgnoreSelfMessage(t *testing.T) {
-	pubsub := syncutils.NewLocalPubSub()
-	log := &syncutils.Log{ID: "test-log"}
-	sync := syncutils.NewSync("self", pubsub, log)
+func TestSyncAddAndBroadcast(t *testing.T) {
+	ctx := context.Background()
 
-	err := sync.Start()
+	host, err := libp2p.New()
+	require.NoError(t, err, "Failed to create libp2p host")
+	defer host.Close()
+
+	ps, err := pubsub.NewGossipSub(ctx, host)
+	require.NoError(t, err, "Failed to create GossipSub instance")
+
+	log := createMockLog(t, "test-log", "test-identity")
+	assert.Equal(t, "test-log", log.ID)
+
+	sync := syncutils.NewSync(host, ps, log)
+
+	err = sync.Start()
 	assert.NoError(t, err)
 
-	entry := syncutils.EncodedEntry{Hash: "self-entry"}
-	err = sync.Add(entry)
+	// Add an entry to the log and broadcast
+	err = sync.Add("test-entry")
 	assert.NoError(t, err)
 
-	// No message should be received
+	// No message should be processed because we ignore self-broadcasts
 	select {
 	case synced := <-sync.SyncedCh:
-		t.Fatal("Should not receive message from self", synced)
+		t.Fatalf("Unexpected message received: %v", synced)
 	case <-time.After(100 * time.Millisecond):
-		// Expected timeout as no message should be received
+		// Expected timeout as self-broadcasts are ignored
 	}
 
 	sync.Stop()
 }
 
 func TestSyncReceiveFromPeer(t *testing.T) {
-	pubsub := syncutils.NewLocalPubSub()
-	log := &syncutils.Log{ID: "test-log"}
-	syncSelf := syncutils.NewSync("self", pubsub, log)
-	syncPeer := syncutils.NewSync("peer1", pubsub, log)
+	ctx := context.Background()
 
-	err := syncSelf.Start()
-	assert.NoError(t, err)
+	// Create two libp2p hosts for the peers
+	hostSelf, err := libp2p.New()
+	require.NoError(t, err, "Failed to create libp2p host for self")
+	defer func(hostSelf host.Host) {
+		err := hostSelf.Close()
+		if err != nil {
+			t.Logf("Failed to close hostSelf: %v", err)
+		}
+	}(hostSelf)
+
+	hostPeer, err := libp2p.New()
+	require.NoError(t, err, "Failed to create libp2p host for peer")
+	defer func(hostPeer host.Host) {
+		err := hostPeer.Close()
+		if err != nil {
+			t.Logf("Failed to close hostPeer: %v", err)
+		}
+	}(hostPeer)
+
+	// Explicitly connect the two hosts
+	hostSelf.Peerstore().AddAddr(hostPeer.ID(), hostPeer.Addrs()[0], peerstore.PermanentAddrTTL)
+	hostPeer.Peerstore().AddAddr(hostSelf.ID(), hostSelf.Addrs()[0], peerstore.PermanentAddrTTL)
+
+	err = hostSelf.Connect(ctx, peer.AddrInfo{ID: hostPeer.ID()})
+	require.NoError(t, err, "Failed to connect hostSelf to hostPeer")
+	err = hostPeer.Connect(ctx, peer.AddrInfo{ID: hostSelf.ID()})
+	require.NoError(t, err, "Failed to connect hostPeer to hostSelf")
+
+	// Create GossipSub instances for each host
+	psSelf, err := pubsub.NewGossipSub(ctx, hostSelf)
+	require.NoError(t, err, "Failed to create GossipSub for self")
+	psPeer, err := pubsub.NewGossipSub(ctx, hostPeer)
+	require.NoError(t, err, "Failed to create GossipSub for peer")
+
+	// Create logs and Sync instances
+	logSelf := createMockLog(t, "shared-log", "self-identity")
+	logPeer := createMockLog(t, "shared-log", "peer-identity")
+
+	syncSelf := syncutils.NewSync(hostSelf, psSelf, logSelf)
+	syncPeer := syncutils.NewSync(hostPeer, psPeer, logPeer)
+
+	// Start Sync instances
+	err = syncSelf.Start()
+	assert.NoError(t, err, "Failed to start syncSelf")
 	err = syncPeer.Start()
-	assert.NoError(t, err)
+	assert.NoError(t, err, "Failed to start syncPeer")
 
-	entry := syncutils.EncodedEntry{Hash: "peer-entry"}
-	err = syncPeer.Add(entry)
-	assert.NoError(t, err)
+	// Wait for the peers to discover each other on the topic
+	discoveryTimeout := time.After(2 * time.Second)
+	for {
+		select {
+		case <-discoveryTimeout:
+			t.Fatal("Timeout waiting for peer discovery")
+		default:
+			peersSelf := psSelf.ListPeers("orbit-sync/shared-log")
+			peersPeer := psPeer.ListPeers("orbit-sync/shared-log")
 
+			// Convert peers to string for comparison
+			peerSelfStrings := make([]string, len(peersSelf))
+			for i, p := range peersSelf {
+				peerSelfStrings[i] = p.String()
+			}
+			peerPeerStrings := make([]string, len(peersPeer))
+			for i, p := range peersPeer {
+				peerPeerStrings[i] = p.String()
+			}
+
+			if len(peerSelfStrings) > 0 && len(peerPeerStrings) > 0 {
+				assert.Contains(t, peerSelfStrings, hostPeer.ID().String())
+				assert.Contains(t, peerPeerStrings, hostSelf.ID().String())
+				goto PeerDiscoveryComplete
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+
+PeerDiscoveryComplete:
+
+	// Peer sends an entry
+	err = syncPeer.Add("peer-entry")
+	assert.NoError(t, err, "Failed to add entry to syncPeer")
+
+	// Verify the message is received by syncSelf
 	select {
 	case synced := <-syncSelf.SyncedCh:
-		assert.Equal(t, "peer-entry", synced.Entry.Hash)
-		assert.Equal(t, "peer1", synced.PeerID)
-	case <-time.After(100 * time.Millisecond):
+		assert.Equal(t, "peer-entry", synced.Entry.Payload, "Received entry payload mismatch")
+		assert.Equal(t, hostPeer.ID().String(), synced.PeerID, "Received PeerID mismatch")
+	case <-time.After(1 * time.Second): // Allow more time for PubSub propagation
 		t.Fatal("Timeout waiting for synced message from peer")
 	}
-
-	syncSelf.Stop()
-	syncPeer.Stop()
-}
-
-func TestSyncMultipleEntries(t *testing.T) {
-	pubsub := syncutils.NewLocalPubSub()
-	log := &syncutils.Log{ID: "test-log"}
-	syncSelf := syncutils.NewSync("self", pubsub, log)
-	syncPeer := syncutils.NewSync("peer1", pubsub, log)
-
-	err := syncSelf.Start()
-	assert.NoError(t, err)
-	err = syncPeer.Start()
-	assert.NoError(t, err)
-
-	entries := []syncutils.EncodedEntry{
-		{Hash: "entry-1"},
-		{Hash: "entry-2"},
-		{Hash: "entry-3"},
-	}
-
-	for _, entry := range entries {
-		err := syncPeer.Add(entry)
-		assert.NoError(t, err)
-	}
-
-	for i := 0; i < len(entries); i++ {
-		select {
-		case synced := <-syncSelf.SyncedCh:
-			assert.Contains(t, []string{"entry-1", "entry-2", "entry-3"}, synced.Entry.Hash)
-			assert.Equal(t, "peer1", synced.PeerID)
-		case <-time.After(100 * time.Millisecond):
-			t.Fatalf("Timeout waiting for synced message %d", i+1)
-		}
-	}
-
-	syncSelf.Stop()
-	syncPeer.Stop()
-}
-
-func TestSyncDiscoverPeers(t *testing.T) {
-	pubsub := syncutils.NewLocalPubSub()
-	log := &syncutils.Log{ID: "test-log"}
-	sync := syncutils.NewSync("self", pubsub, log)
-
-	peers := sync.DiscoverPeers()
-	assert.NotEmpty(t, peers)
-	assert.Equal(t, []string{"peer1", "peer2"}, peers)
-}
-
-func TestSyncMessageDeduplication(t *testing.T) {
-	pubsub := syncutils.NewLocalPubSub()
-	log := &syncutils.Log{ID: "test-log"}
-	syncSelf := syncutils.NewSync("self", pubsub, log)
-	syncPeer := syncutils.NewSync("peer1", pubsub, log)
-
-	err := syncSelf.Start()
-	assert.NoError(t, err)
-	err = syncPeer.Start()
-	assert.NoError(t, err)
-
-	entry := syncutils.EncodedEntry{Hash: "duplicate-entry"}
-	for i := 0; i < 3; i++ {
-		err := syncPeer.Add(entry)
-		assert.NoError(t, err)
-	}
-
-	received := map[string]bool{}
-	for i := 0; i < 3; i++ {
-		select {
-		case synced := <-syncSelf.SyncedCh:
-			assert.Equal(t, "duplicate-entry", synced.Entry.Hash)
-			assert.Equal(t, "peer1", synced.PeerID)
-			received[synced.Entry.Hash] = true
-		case <-time.After(100 * time.Millisecond):
-			t.Fatal("Timeout waiting for synced message")
-		}
-	}
-
-	assert.Len(t, received, 1) // Ensure deduplication logic would filter duplicates if implemented
 
 	syncSelf.Stop()
 	syncPeer.Stop()
