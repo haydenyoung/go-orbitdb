@@ -24,13 +24,13 @@ func TestNewLog(t *testing.T) {
 		t.Errorf("Expected log ID to be '%s', got '%s'", logID, log.ID)
 	}
 
-	if log.identity != identity {
+	if log.Identity != identity {
 		t.Error("Log identity does not match the provided identity")
 	}
 
-	if log.clock.ID != identity.ID || log.clock.Time != 0 {
+	if log.Clock.ID != identity.ID || log.Clock.Time != 0 {
 		t.Errorf("Expected clock to be initialized with ID '%s' and Time 0, got ID '%s' and Time %d",
-			identity.ID, log.clock.ID, log.clock.Time)
+			identity.ID, log.Clock.ID, log.Clock.Time)
 	}
 }
 
