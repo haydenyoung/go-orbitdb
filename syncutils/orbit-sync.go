@@ -8,6 +8,7 @@ import (
 	"log"
 	"orbitdb/go-orbitdb/oplog"
 	"sync"
+	"time"
 
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -24,8 +25,9 @@ type Sync struct {
 	TopicName string           // PubSub topic name
 	topic     *pubsub.Topic    // Subscribed topic
 	sub       *pubsub.Subscription
-	mu        sync.Mutex     // Protects peer access
-	wg        sync.WaitGroup // WaitGroup for goroutines
+	mu        sync.Mutex      // Protects peer access
+	wg        sync.WaitGroup  // WaitGroup for goroutines
+	peerMap   map[string]bool // Tracks connected peers
 }
 
 // SyncedEntry represents an entry received from a peer.
@@ -47,6 +49,7 @@ func NewSync(host host.Host, pubsub *pubsub.PubSub, log *oplog.Log) *Sync {
 		log:       log,
 		SyncedCh:  make(chan SyncedEntry, 10),
 		TopicName: topicName,
+		peerMap:   make(map[string]bool),
 	}
 }
 
@@ -67,6 +70,9 @@ func (s *Sync) Start() error {
 	}
 
 	log.Printf("Sync started: subscribed to topic %s", s.TopicName)
+
+	// Track peer joining
+	go s.trackPeers()
 
 	s.wg.Add(1)
 	go s.processMessages()
@@ -175,6 +181,94 @@ func (s *Sync) processMessages() {
 
 		// Notify listeners
 		s.SyncedCh <- SyncedEntry{PeerID: payload.PeerID, Entry: payload.Entry}
+	}
+}
+
+// trackPeers listens for changes in peer list and tracks peers joining or leaving the topic.
+func (s *Sync) trackPeers() {
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		default:
+			// Discover peers
+			peers := s.DiscoverPeers()
+			for _, p := range peers {
+				if _, exists := s.peerMap[p.String()]; !exists {
+					s.peerMap[p.String()] = true
+					s.PeerJoin(p.String()) // New peer has joined
+				}
+			}
+
+			// Check for peers leaving (you might want to add a more robust method)
+			for peerID := range s.peerMap {
+				found := false
+				for _, p := range peers {
+					if peerID == p.String() {
+						found = true
+						break
+					}
+				}
+
+				if !found {
+					delete(s.peerMap, peerID)
+					s.PeerLeave(peerID) // Peer has left
+				}
+			}
+
+			// Sleep for a short period before re-checking the peers
+			<-time.After(2 * time.Second)
+		}
+	}
+}
+
+// PeerJoin method to handle new peer joins
+func (s *Sync) PeerJoin(peerID string) {
+	// Log the event with additional context
+	log.Printf("Peer joined: %s at %s", peerID, time.Now().Format(time.RFC3339))
+
+	// Optionally send a "join" message to the `SyncedCh` channel
+	joinEntry := oplog.EncodedEntry{
+		Entry: oplog.Entry{
+			ID:       fmt.Sprintf("%s-join", peerID),
+			Payload:  fmt.Sprintf("Peer %s has joined the network", peerID),
+			Clock:    s.log.Clock,
+			V:        1,
+			Identity: s.log.Identity.ID,
+		},
+		Bytes: []byte(fmt.Sprintf("Peer %s has joined the network", peerID)),
+		Hash:  fmt.Sprintf("%x", time.Now().UnixNano()),
+	}
+
+	// Send the join event as an entry to the synced channel
+	s.SyncedCh <- SyncedEntry{
+		PeerID: peerID,
+		Entry:  joinEntry,
+	}
+}
+
+// PeerLeave method to handle peer disconnections
+func (s *Sync) PeerLeave(peerID string) {
+	// Log the event with additional context
+	log.Printf("Peer left: %s at %s", peerID, time.Now().Format(time.RFC3339))
+
+	// Optionally send a "leave" message to the `SyncedCh` channel
+	leaveEntry := oplog.EncodedEntry{
+		Entry: oplog.Entry{
+			ID:       fmt.Sprintf("%s-leave", peerID),
+			Payload:  fmt.Sprintf("Peer %s has left the network", peerID),
+			Clock:    s.log.Clock,
+			V:        1,
+			Identity: s.log.Identity.ID,
+		},
+		Bytes: []byte(fmt.Sprintf("Peer %s has left the network", peerID)),
+		Hash:  fmt.Sprintf("%x", time.Now().UnixNano()),
+	}
+
+	// Send the leave event as an entry to the synced channel
+	s.SyncedCh <- SyncedEntry{
+		PeerID: peerID,
+		Entry:  leaveEntry,
 	}
 }
 
