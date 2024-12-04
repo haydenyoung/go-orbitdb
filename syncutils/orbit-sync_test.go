@@ -59,17 +59,22 @@ func createMockLog(t *testing.T, logID string, identityID string) *oplog.Log {
 func TestSyncStartStop(t *testing.T) {
 	ctx := context.Background()
 
-	host, err := libp2p.New()
+	host1, err := libp2p.New()
 	require.NoError(t, err, "Failed to create libp2p host")
-	defer host.Close()
+	defer func(host1 host.Host) {
+		err := host1.Close()
+		if err != nil {
 
-	ps, err := pubsub.NewGossipSub(ctx, host)
+		}
+	}(host1)
+
+	ps, err := pubsub.NewGossipSub(ctx, host1)
 	require.NoError(t, err, "Failed to create GossipSub instance")
 
 	log := createMockLog(t, "test-log", "test-identity")
 	assert.Equal(t, "test-log", log.ID)
 
-	sync := syncutils.NewSync(host, ps, log)
+	sync := syncutils.NewSync(host1, ps, log)
 
 	err = sync.Start()
 	assert.NoError(t, err)
@@ -81,17 +86,22 @@ func TestSyncStartStop(t *testing.T) {
 func TestSyncAddAndBroadcast(t *testing.T) {
 	ctx := context.Background()
 
-	host, err := libp2p.New()
+	host1, err := libp2p.New()
 	require.NoError(t, err, "Failed to create libp2p host")
-	defer host.Close()
+	defer func(host1 host.Host) {
+		err := host1.Close()
+		if err != nil {
 
-	ps, err := pubsub.NewGossipSub(ctx, host)
+		}
+	}(host1)
+
+	ps, err := pubsub.NewGossipSub(ctx, host1)
 	require.NoError(t, err, "Failed to create GossipSub instance")
 
 	log := createMockLog(t, "test-log", "test-identity")
 	assert.Equal(t, "test-log", log.ID)
 
-	sync := syncutils.NewSync(host, ps, log)
+	sync := syncutils.NewSync(host1, ps, log)
 
 	err = sync.Start()
 	assert.NoError(t, err)
