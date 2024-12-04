@@ -320,3 +320,115 @@ PeerDiscoveryComplete:
 	syncSelf.Stop()
 	syncPeer.Stop()
 }
+
+func TestSyncSendAndReceiveHead(t *testing.T) {
+	ctx := context.Background()
+
+	// Create two libp2p hosts for the peers
+	hostSelf, err := libp2p.New()
+	require.NoError(t, err, "Failed to create libp2p host for self")
+	defer func(hostSelf host.Host) {
+		err := hostSelf.Close()
+		if err != nil {
+			t.Logf("Failed to close hostSelf: %v", err)
+		}
+	}(hostSelf)
+
+	hostPeer, err := libp2p.New()
+	require.NoError(t, err, "Failed to create libp2p host for peer")
+	defer func(hostPeer host.Host) {
+		err := hostPeer.Close()
+		if err != nil {
+			t.Logf("Failed to close hostPeer: %v", err)
+		}
+	}(hostPeer)
+
+	// Explicitly connect the two hosts
+	hostSelf.Peerstore().AddAddr(hostPeer.ID(), hostPeer.Addrs()[0], peerstore.PermanentAddrTTL)
+	hostPeer.Peerstore().AddAddr(hostSelf.ID(), hostSelf.Addrs()[0], peerstore.PermanentAddrTTL)
+
+	err = hostSelf.Connect(ctx, peer.AddrInfo{ID: hostPeer.ID()})
+	require.NoError(t, err, "Failed to connect hostSelf to hostPeer")
+	err = hostPeer.Connect(ctx, peer.AddrInfo{ID: hostSelf.ID()})
+	require.NoError(t, err, "Failed to connect hostPeer to hostSelf")
+
+	// Create GossipSub instances for each host
+	psSelf, err := pubsub.NewGossipSub(ctx, hostSelf)
+	require.NoError(t, err, "Failed to create GossipSub for self")
+	psPeer, err := pubsub.NewGossipSub(ctx, hostPeer)
+	require.NoError(t, err, "Failed to create GossipSub for peer")
+
+	// Create logs and Sync instances
+	logSelf := createMockLog(t, "shared-log", "self-identity")
+	logPeer := createMockLog(t, "shared-log", "peer-identity")
+
+	syncSelf := syncutils.NewSync(hostSelf, psSelf, logSelf)
+	syncPeer := syncutils.NewSync(hostPeer, psPeer, logPeer)
+
+	// Start Sync instances
+	err = syncSelf.Start()
+	assert.NoError(t, err, "Failed to start syncSelf")
+	err = syncPeer.Start()
+	assert.NoError(t, err, "Failed to start syncPeer")
+
+	// Wait for the peers to discover each other on the topic
+	discoveryTimeout := time.After(2 * time.Second)
+	for {
+		select {
+		case <-discoveryTimeout:
+			t.Fatal("Timeout waiting for peer discovery")
+		default:
+			peersSelf := psSelf.ListPeers("orbit-sync/shared-log")
+			peersPeer := psPeer.ListPeers("orbit-sync/shared-log")
+
+			// Convert peers to string for comparison
+			peerSelfStrings := make([]string, len(peersSelf))
+			for i, p := range peersSelf {
+				peerSelfStrings[i] = p.String()
+			}
+			peerPeerStrings := make([]string, len(peersPeer))
+			for i, p := range peersPeer {
+				peerPeerStrings[i] = p.String()
+			}
+
+			if len(peerSelfStrings) > 0 && len(peerPeerStrings) > 0 {
+				assert.Contains(t, peerSelfStrings, hostPeer.ID().String())
+				assert.Contains(t, peerPeerStrings, hostSelf.ID().String())
+				goto PeerDiscoveryComplete
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+
+PeerDiscoveryComplete:
+
+	// Self sends a head to the peer
+	err = syncSelf.Add("test-head-entry")
+	assert.NoError(t, err, "Failed to add entry to syncSelf")
+
+	// Verify the head is received by peer
+	select {
+	case synced := <-syncPeer.SyncedCh:
+		assert.Equal(t, "test-head-entry", synced.Entry.Payload, "Received head entry payload mismatch")
+		assert.Equal(t, hostSelf.ID().String(), synced.PeerID, "Received PeerID mismatch for head entry")
+	case <-time.After(1 * time.Second):
+		t.Fatal("Timeout waiting for head message from self")
+	}
+
+	// Peer sends a head to the self
+	err = syncPeer.Add("peer-head-entry")
+	assert.NoError(t, err, "Failed to add entry to syncPeer")
+
+	// Verify the head is received by self
+	select {
+	case synced := <-syncSelf.SyncedCh:
+		assert.Equal(t, "peer-head-entry", synced.Entry.Payload, "Received head entry payload mismatch")
+		assert.Equal(t, hostPeer.ID().String(), synced.PeerID, "Received PeerID mismatch for head entry")
+	case <-time.After(1 * time.Second):
+		t.Fatal("Timeout waiting for head message from peer")
+	}
+
+	// Stop Sync instances
+	syncSelf.Stop()
+	syncPeer.Stop()
+}
