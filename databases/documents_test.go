@@ -1,13 +1,40 @@
 package databases_test
 
 import (
+	"context"
 	"fmt"
-	"orbitdb/go-orbitdb/databases"
-	"testing"
-
+	"github.com/libp2p/go-libp2p"
+	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"orbitdb/go-orbitdb/databases"
+	"orbitdb/go-orbitdb/storage"
+	"testing"
 )
+
+// setupKeyValueTest initializes a KeyValue instance for testing.
+func setupKeyValueTest(t *testing.T) *databases.KeyValue {
+	// Use the helper to create a KeyStore and Identity
+	ks, identity := setupTestKeyStoreAndIdentity(t)
+
+	// In-memory storage for the database
+	entryStorage := storage.NewMemoryStorage()
+
+	// Create a libp2p host
+	ctx := context.Background()
+	host, err := libp2p.New()
+	require.NoError(t, err)
+
+	// Create a pubsub instance
+	ps, err := pubsub.NewGossipSub(ctx, host)
+	require.NoError(t, err)
+
+	// Create the KeyValue database instance
+	kv, err := databases.NewKeyValue("test-address", "test-keyvalue", identity, entryStorage, ks, host, ps)
+	require.NoError(t, err)
+
+	return kv
+}
 
 // setupDocumentsTest initializes a Documents instance for testing.
 func setupDocumentsTest(t *testing.T) *databases.Documents {
@@ -101,9 +128,18 @@ func TestDocuments_All(t *testing.T) {
 	docs := setupDocumentsTest(t)
 
 	// Add multiple documents
-	docs.Put(map[string]interface{}{"_id": "doc1", "type": "test", "value": 10})
-	docs.Put(map[string]interface{}{"_id": "doc2", "type": "test", "value": 20})
-	docs.Put(map[string]interface{}{"_id": "doc3", "type": "other", "value": 30})
+	_, err := docs.Put(map[string]interface{}{"_id": "doc1", "type": "test", "value": 10})
+	if err != nil {
+		return
+	}
+	_, err = docs.Put(map[string]interface{}{"_id": "doc2", "type": "test", "value": 20})
+	if err != nil {
+		return
+	}
+	_, err = docs.Put(map[string]interface{}{"_id": "doc3", "type": "other", "value": 30})
+	if err != nil {
+		return
+	}
 
 	// Retrieve all documents
 	all, err := docs.All()

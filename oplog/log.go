@@ -14,12 +14,12 @@ import (
 // Log represents an append-only log
 type Log struct {
 	ID       string
-	identity *identitytypes.Identity
-	clock    Clock
-	head     *EncodedEntry
+	Identity *identitytypes.Identity
+	Clock    Clock
+	Head     *EncodedEntry
 	Entries  storage.Storage
 	keystore *keystore.KeyStore
-	mu       sync.RWMutex
+	Mu       sync.RWMutex
 }
 
 // NewLog creates a new log instance
@@ -51,8 +51,8 @@ func NewLog(id string, identity *identitytypes.Identity, entryStorage storage.St
 
 	return &Log{
 		ID:       id,
-		identity: identity,
-		clock:    NewClock(identity.ID, 0),
+		Identity: identity,
+		Clock:    NewClock(identity.ID, 0),
 		Entries:  entryStorage,
 		keystore: keyStore,
 	}, nil
@@ -60,34 +60,34 @@ func NewLog(id string, identity *identitytypes.Identity, entryStorage storage.St
 
 // Append adds a new entry to the log
 func (l *Log) Append(payload string) (*EncodedEntry, error) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
+	l.Mu.Lock()
+	defer l.Mu.Unlock()
 
 	if payload == "" {
 		return nil, errors.New("payload is required")
 	}
 
-	l.clock = TickClock(l.clock)
+	l.Clock = TickClock(l.Clock)
 
 	var next []string
-	if l.head != nil {
-		next = []string{l.head.Hash}
+	if l.Head != nil {
+		next = []string{l.Head.Hash}
 	}
 
-	entry := NewEntry(l.keystore, l.identity, l.ID, payload, l.clock, next, nil)
+	entry := NewEntry(l.keystore, l.Identity, l.ID, payload, l.Clock, next, nil)
 
 	if err := l.Entries.Put(entry.Hash, entry.Bytes); err != nil {
 		return nil, fmt.Errorf("failed to store entry: %w", err)
 	}
 
-	l.head = &entry
+	l.Head = &entry
 	return &entry, nil
 }
 
 // Get retrieves an entry by its hash
 func (l *Log) Get(hash string) (*EncodedEntry, error) {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
+	l.Mu.RLock()
+	defer l.Mu.RUnlock()
 
 	data, err := l.Entries.Get(hash)
 	if err != nil {
@@ -108,8 +108,8 @@ func (l *Log) Get(hash string) (*EncodedEntry, error) {
 
 // Values retrieves all Entries in the log, sorted using CompareClocks
 func (l *Log) Values() ([]EncodedEntry, error) {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
+	l.Mu.RLock()
+	defer l.Mu.RUnlock()
 
 	entries := make([]EncodedEntry, 0)
 	ch, err := l.Entries.Iterator()
@@ -141,8 +141,8 @@ func (l *Log) Values() ([]EncodedEntry, error) {
 }
 
 func (l *Log) Traverse(startHash string, shouldStop func(*EncodedEntry) bool) ([]*EncodedEntry, error) {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
+	l.Mu.RLock()
+	defer l.Mu.RUnlock()
 
 	var traversed []*EncodedEntry
 	visited := make(map[string]bool)
@@ -155,8 +155,8 @@ func (l *Log) Traverse(startHash string, shouldStop func(*EncodedEntry) bool) ([
 			return nil, fmt.Errorf("failed to start traversal from entry: %w", err)
 		}
 		stack = []*EncodedEntry{startEntry}
-	} else if l.head != nil {
-		stack = []*EncodedEntry{l.head}
+	} else if l.Head != nil {
+		stack = []*EncodedEntry{l.Head}
 	} else {
 		return nil, errors.New("no starting point for traversal")
 	}
@@ -234,8 +234,8 @@ func (l *Log) JoinEntry(entry *EncodedEntry, processed map[string]bool) error {
 		}
 
 		// Update the log head if the new entry has a more recent clock
-		if l.head == nil || CompareClocks(currentEntry.Clock, l.head.Clock) > 0 {
-			l.head = currentEntry
+		if l.Head == nil || CompareClocks(currentEntry.Clock, l.Head.Clock) > 0 {
+			l.Head = currentEntry
 		}
 	}
 
@@ -243,8 +243,8 @@ func (l *Log) JoinEntry(entry *EncodedEntry, processed map[string]bool) error {
 }
 
 func (l *Log) Join(otherLog *Log) error {
-	l.mu.Lock()
-	defer l.mu.Unlock()
+	l.Mu.Lock()
+	defer l.Mu.Unlock()
 
 	// Check if the other log has the same ID
 	if otherLog.ID != l.ID {
@@ -270,33 +270,21 @@ func (l *Log) Join(otherLog *Log) error {
 
 // Clear removes all Entries from the log
 func (l *Log) Clear() error {
-	l.mu.Lock()
-	defer l.mu.Unlock()
+	l.Mu.Lock()
+	defer l.Mu.Unlock()
 
 	if err := l.Entries.Clear(); err != nil {
 		return fmt.Errorf("failed to clear Entries: %w", err)
 	}
 
-	l.head = nil
+	l.Head = nil
 	return nil
-}
-
-// Head returns the current head of the log or an error if the head is nil
-func (l *Log) Head() (*EncodedEntry, error) {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-
-	if l.head == nil {
-		return nil, errors.New("log head is nil")
-	}
-
-	return l.head, nil
 }
 
 // Close closes the log and its underlying storage
 func (l *Log) Close() error {
-	l.mu.Lock()
-	defer l.mu.Unlock()
+	l.Mu.Lock()
+	defer l.Mu.Unlock()
 
 	return l.Entries.Close()
 }

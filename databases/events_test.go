@@ -1,16 +1,19 @@
 package databases_test
 
 import (
+	"context"
 	"fmt"
+	"testing"
+	"time"
+
+	"github.com/libp2p/go-libp2p"
+	pubsub "github.com/libp2p/go-libp2p-pubsub"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"orbitdb/go-orbitdb/databases"
 	"orbitdb/go-orbitdb/identities/providers"
 	"orbitdb/go-orbitdb/keystore"
 	"orbitdb/go-orbitdb/storage"
-	"testing"
-	"time"
-
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // setupDatabaseTest initializes a mock database instance for testing.
@@ -26,7 +29,17 @@ func setupDatabaseTest(t *testing.T) *databases.Database {
 	entryStorage := storage.NewMemoryStorage()
 	require.NotNil(t, entryStorage)
 
-	db, err := databases.NewDatabase("test-address", "test-db", identity, entryStorage, keyStore)
+	// Create a libp2p host
+	ctx := context.Background()
+	host, err := libp2p.New()
+	require.NoError(t, err)
+
+	// Create a pubsub instance
+	ps, err := pubsub.NewGossipSub(ctx, host)
+	require.NoError(t, err)
+
+	// Create the database instance
+	db, err := databases.NewDatabase("test-address", "test-db", identity, entryStorage, keyStore, host, ps)
 	require.NoError(t, err)
 
 	return db

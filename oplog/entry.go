@@ -87,15 +87,15 @@ func NewEntry(ks *keystore.KeyStore, identity *identitytypes.Identity, id string
 }
 
 // VerifyEntrySignature verifies the signature on an entry using KeyStore.
-func VerifyEntrySignature(ks *keystore.KeyStore, entry EncodedEntry) bool {
-	// Recreate the entry data without Signature, Key, and Identity fields
+func VerifyEntrySignature(ks *keystore.KeyStore, encodedEntry EncodedEntry) bool {
+	// Recreate the encodedEntry data without Signature, Key, and Identity fields
 	entryData := Entry{
-		ID:      entry.Entry.ID,
-		Payload: entry.Entry.Payload,
-		Next:    entry.Entry.Next,
-		Refs:    entry.Entry.Refs,
-		Clock:   entry.Entry.Clock,
-		V:       entry.Entry.V,
+		ID:      encodedEntry.Entry.ID,
+		Payload: encodedEntry.Entry.Payload,
+		Next:    encodedEntry.Entry.Next,
+		Refs:    encodedEntry.Entry.Refs,
+		Clock:   encodedEntry.Entry.Clock,
+		V:       encodedEntry.Entry.V,
 	}
 
 	// Ensure that Next and Refs are initialized as empty slices if nil
@@ -106,17 +106,17 @@ func VerifyEntrySignature(ks *keystore.KeyStore, entry EncodedEntry) bool {
 		entryData.Refs = []string{}
 	}
 
-	// Encode the entry data without the Key, Identity, and Signature fields
+	// Encode the encodedEntry data without the Key, Identity, and Signature fields
 	reconstructedEncodedEntry := Encode(entryData)
 
-	pubKey, err := keystore.ReconstructPublicKeyFromHex(entry.Entry.Key)
+	pubKey, err := keystore.ReconstructPublicKeyFromHex(encodedEntry.Entry.Key)
 	if err != nil {
 		log.Printf("Error reconstructing public key: %v\n", err)
 		return false
 	}
 
 	// Verify the signature using the public key from the entry
-	verified, err := ks.VerifyMessage(*pubKey, reconstructedEncodedEntry.Bytes, entry.Signature)
+	verified, err := ks.VerifyMessage(*pubKey, reconstructedEncodedEntry.Bytes, encodedEntry.Signature)
 	return err == nil && verified
 }
 

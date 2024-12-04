@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	pubsub "github.com/libp2p/go-libp2p-pubsub"
+	"github.com/libp2p/go-libp2p/core/host"
 	"orbitdb/go-orbitdb/identities/identitytypes"
 	"orbitdb/go-orbitdb/keystore"
 	"orbitdb/go-orbitdb/storage"
@@ -15,8 +17,14 @@ type KeyValue struct {
 }
 
 // NewKeyValue creates a new KeyValue database instance.
-func NewKeyValue(address, name string, identity *identitytypes.Identity, entryStorage storage.Storage, keyStore *keystore.KeyStore) (*KeyValue, error) {
-	baseDB, err := NewDatabase(address, name, identity, entryStorage, keyStore)
+func NewKeyValue(address, name string, identity *identitytypes.Identity, entryStorage storage.Storage, keyStore *keystore.KeyStore, host host.Host, ps *pubsub.PubSub) (*KeyValue, error) {
+	// Ensure required parameters are provided
+	if host == nil || ps == nil {
+		return nil, errors.New("host and pubsub instances are required")
+	}
+
+	// Initialize the base database
+	baseDB, err := NewDatabase(address, name, identity, entryStorage, keyStore, host, ps)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create base database: %w", err)
 	}

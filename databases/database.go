@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	pubsub "github.com/libp2p/go-libp2p-pubsub"
+	"github.com/libp2p/go-libp2p/core/host"
 	"orbitdb/go-orbitdb/identities/identitytypes"
 	"orbitdb/go-orbitdb/keystore"
 	"orbitdb/go-orbitdb/oplog"
 	"orbitdb/go-orbitdb/storage"
-	"orbitdb/go-orbitdb/syncutils"
+	orbitsync "orbitdb/go-orbitdb/syncutils"
 	"sync"
 )
 
@@ -16,19 +18,26 @@ import (
 type Database struct {
 	Address     string
 	Name        string
-	Identity    *identitytypes.Identity // Replace with your Identity type
-	Meta        map[string]interface{}  // Metadata for the database
-	Log         *oplog.Log              // Append-only log for data storage
-	Sync        *syncutils.Sync         // Synchronization stub
-	Events      chan interface{}        // Event channel for emitting updates
-	taskQueue   chan func()             // Channel for sequential task execution
-	stopChannel chan struct{}           // Channel for stopping background tasks
-	mu          sync.Mutex              // Mutex for thread safety
+	Identity    *identitytypes.Identity
+	Meta        map[string]interface{}
+	Log         *oplog.Log
+	Sync        *orbitsync.Sync
+	Events      chan interface{}
+	taskQueue   chan func()
+	stopChannel chan struct{}
+	mu          sync.Mutex
 }
 
 // NewDatabase creates a new Database instance.
-func NewDatabase(address, name string, identity *identitytypes.Identity, entryStorage storage.Storage, keyStore *keystore.KeyStore) (*Database, error) {
-	// Validate address
+func NewDatabase(
+	address, name string,
+	identity *identitytypes.Identity,
+	entryStorage storage.Storage,
+	keyStore *keystore.KeyStore,
+	host host.Host,
+	pubsub *pubsub.PubSub,
+) (*Database, error) {
+	// Validate inputs
 	if address == "" {
 		return nil, fmt.Errorf("address is required")
 	}
@@ -54,7 +63,7 @@ func NewDatabase(address, name string, identity *identitytypes.Identity, entrySt
 		return nil, fmt.Errorf("failed to initialize oplog: %w", err)
 	}
 
-	// Create the database instance
+	// Initialize the database instance
 	db := &Database{
 		Address:     address,
 		Name:        name,
@@ -69,11 +78,15 @@ func NewDatabase(address, name string, identity *identitytypes.Identity, entrySt
 	// Start processing the task queue
 	go db.processTaskQueue()
 
-	// Initialize Sync (using stubbed implementation)
-	db.Sync, err = syncutils.NewSync(nil, log, db.Events, db.ApplyOperation, false)
+	// Initialize Sync with the provided host and pubsub
+	db.Sync = orbitsync.NewSync(host, pubsub, log)
+	err = db.Sync.Start()
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize sync: %w", err)
+		return nil, fmt.Errorf("failed to start sync: %w", err)
 	}
+
+	// Listen for synchronized entries
+	go db.listenForSyncUpdates()
 
 	return db, nil
 }
@@ -83,12 +96,17 @@ func (db *Database) processTaskQueue() {
 	for {
 		select {
 		case task := <-db.taskQueue:
-			fmt.Println("processTaskQueue: Executing task")
 			task()
 		case <-db.stopChannel:
-			fmt.Println("processTaskQueue: Stopping task processing")
 			return
 		}
+	}
+}
+
+// listenForSyncUpdates listens to updates from the Sync component.
+func (db *Database) listenForSyncUpdates() {
+	for synced := range db.Sync.SyncedCh {
+		db.ApplyOperation(synced.Entry.Bytes)
 	}
 }
 
@@ -122,7 +140,7 @@ func (db *Database) AddOperation(op interface{}) (string, error) {
 		}
 
 		// Add the entry to sync
-		if syncErr := db.Sync.Add(entry); syncErr != nil {
+		if syncErr := db.Sync.Add(entry.Payload); syncErr != nil {
 			result.err = fmt.Errorf("failed to sync entry: %w", syncErr)
 			resultChan <- result
 			return
@@ -165,10 +183,13 @@ func serializeOperation(op interface{}) (string, error) {
 
 // Close stops the database's operations and cleans up resources.
 func (db *Database) Close() error {
-	close(db.stopChannel) // Stop task processing
-	db.Sync.Stop()        // Stop synchronization
-	db.Log.Close()        // Close the oplog
-	close(db.Events)      // Close the event channel
+	close(db.stopChannel)
+	db.Sync.Stop()
+	err := db.Log.Close()
+	if err != nil {
+		return err
+	}
+	close(db.Events)
 	return nil
 }
 
@@ -187,15 +208,12 @@ func (db *Database) Drop() error {
 // ApplyOperation applies an operation received via synchronization.
 func (db *Database) ApplyOperation(data []byte) {
 	task := func() {
-		fmt.Println("applyOperation: task started")
-
 		// Decode the received data into an entry
 		entry, err := oplog.Decode(data)
 		if err != nil {
 			fmt.Printf("applyOperation: failed to decode data: %v\n", err)
 			return
 		}
-		fmt.Printf("applyOperation: data decoded, entry ID: %s\n", entry.Entry.ID)
 
 		// Ensure entry belongs to the same log
 		if entry.Entry.ID != db.Log.ID {
@@ -203,7 +221,7 @@ func (db *Database) ApplyOperation(data []byte) {
 			return
 		}
 
-		// Create a processed map for JoinEntry
+		// Join the entry into the log
 		processed := make(map[string]bool)
 
 		// Join the entry into the log
@@ -211,12 +229,10 @@ func (db *Database) ApplyOperation(data []byte) {
 			fmt.Printf("applyOperation: failed to join entry: %v\n", joinErr)
 			return
 		}
-		fmt.Println("applyOperation: entry joined successfully")
 
 		// Emit the update event safely
 		select {
 		case db.Events <- &entry:
-			fmt.Println("applyOperation: event emitted")
 		default:
 			// Log or handle the case where Events channel is full
 			fmt.Println("applyOperation: Events channel full, event dropped")

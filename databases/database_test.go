@@ -1,17 +1,21 @@
 package databases_test
 
 import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/libp2p/go-libp2p"
+	pubsub "github.com/libp2p/go-libp2p-pubsub"
+	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"orbitdb/go-orbitdb/databases"
 	"orbitdb/go-orbitdb/identities/identitytypes"
 	"orbitdb/go-orbitdb/identities/providers"
 	"orbitdb/go-orbitdb/keystore"
 	"orbitdb/go-orbitdb/oplog"
 	"orbitdb/go-orbitdb/storage"
-	"testing"
-	"time"
-
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func setupTestKeyStoreAndIdentity(t *testing.T) (*keystore.KeyStore, *identitytypes.Identity) {
@@ -29,13 +33,29 @@ func setupTestKeyStoreAndIdentity(t *testing.T) (*keystore.KeyStore, *identityty
 	return ks, identity
 }
 
+// setupLibp2pHostAndPubSub initializes a libp2p host and pubsub instance.
+func setupLibp2pHostAndPubSub(t *testing.T) (host.Host, *pubsub.PubSub) {
+	ctx := context.Background()
+
+	// Create a libp2p host
+	h, err := libp2p.New()
+	require.NoError(t, err)
+
+	// Create a pubsub instance
+	ps, err := pubsub.NewGossipSub(ctx, h)
+	require.NoError(t, err)
+
+	return h, ps
+}
+
 // TestNewDatabase tests the initialization of a new Database instance.
 func TestNewDatabase(t *testing.T) {
 	ks, identity := setupTestKeyStoreAndIdentity(t)
 
 	entryStorage := storage.NewMemoryStorage()
+	host1, ps := setupLibp2pHostAndPubSub(t)
 
-	db, err := databases.NewDatabase("test-address", "test-db", identity, entryStorage, ks)
+	db, err := databases.NewDatabase("test-address", "test-db", identity, entryStorage, ks, host1, ps)
 	require.NoError(t, err)
 	require.NotNil(t, db)
 
@@ -52,8 +72,9 @@ func TestAddOperation(t *testing.T) {
 	ks, identity := setupTestKeyStoreAndIdentity(t)
 
 	entryStorage := storage.NewMemoryStorage()
+	host1, ps := setupLibp2pHostAndPubSub(t)
 
-	db, err := databases.NewDatabase("test-address", "test-db", identity, entryStorage, ks)
+	db, err := databases.NewDatabase("test-address", "test-db", identity, entryStorage, ks, host1, ps)
 	require.NoError(t, err)
 
 	op := map[string]string{"key": "test", "value": "123"}
@@ -77,11 +98,11 @@ func TestAddOperationSerializationError(t *testing.T) {
 	ks, identity := setupTestKeyStoreAndIdentity(t)
 
 	entryStorage := storage.NewMemoryStorage()
+	host1, ps := setupLibp2pHostAndPubSub(t)
 
-	db, err := databases.NewDatabase("test-address", "test-db", identity, entryStorage, ks)
+	db, err := databases.NewDatabase("test-address", "test-db", identity, entryStorage, ks, host1, ps)
 	require.NoError(t, err)
 
-	// Pass an unmarshalable value to trigger a serialization error
 	_, err = db.AddOperation(make(chan int))
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to serialize operation")
@@ -93,10 +114,11 @@ func TestApplyOperation(t *testing.T) {
 
 	// Create the in-memory storage
 	entryStorage := storage.NewMemoryStorage()
+	host1, ps := setupLibp2pHostAndPubSub(t)
 
 	// Log ID and database setup
 	logID := "test-log"
-	db, err := databases.NewDatabase(logID, "test-db", identity, entryStorage, ks)
+	db, err := databases.NewDatabase(logID, "test-db", identity, entryStorage, ks, host1, ps)
 	require.NoError(t, err)
 
 	// Create a payload for the test entry
@@ -129,8 +151,9 @@ func TestClose(t *testing.T) {
 	ks, identity := setupTestKeyStoreAndIdentity(t)
 
 	entryStorage := storage.NewMemoryStorage()
+	host1, ps := setupLibp2pHostAndPubSub(t)
 
-	db, err := databases.NewDatabase("test-address", "test-db", identity, entryStorage, ks)
+	db, err := databases.NewDatabase("test-address", "test-db", identity, entryStorage, ks, host1, ps)
 	require.NoError(t, err)
 
 	err = db.Close()

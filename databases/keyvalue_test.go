@@ -4,27 +4,9 @@ import (
 	"encoding/json"
 	"testing"
 
-	"orbitdb/go-orbitdb/databases"
-	"orbitdb/go-orbitdb/storage"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-// Helper function to set up a KeyValue instance for testing
-func setupKeyValueTest(t *testing.T) *databases.KeyValue {
-	// Use the helper to create a KeyStore and Identity
-	ks, identity := setupTestKeyStoreAndIdentity(t)
-
-	// In-memory storage for the database
-	entryStorage := storage.NewMemoryStorage()
-
-	// Create the KeyValue database instance
-	kv, err := databases.NewKeyValue("test-address", "test-keyvalue", identity, entryStorage, ks)
-	require.NoError(t, err)
-
-	return kv
-}
 
 // TestPut tests the Put method of KeyValue
 func TestPut(t *testing.T) {

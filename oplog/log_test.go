@@ -24,13 +24,13 @@ func TestNewLog(t *testing.T) {
 		t.Errorf("Expected log ID to be '%s', got '%s'", logID, log.ID)
 	}
 
-	if log.identity != identity {
+	if log.Identity != identity {
 		t.Error("Log identity does not match the provided identity")
 	}
 
-	if log.clock.ID != identity.ID || log.clock.Time != 0 {
+	if log.Clock.ID != identity.ID || log.Clock.Time != 0 {
 		t.Errorf("Expected clock to be initialized with ID '%s' and Time 0, got ID '%s' and Time %d",
-			identity.ID, log.clock.ID, log.clock.Time)
+			identity.ID, log.Clock.ID, log.Clock.Time)
 	}
 }
 
@@ -338,8 +338,8 @@ func TestLog_Clear(t *testing.T) {
 		t.Errorf("Expected 0 Entries after clear, got %d", len(entries))
 	}
 
-	head, err := log.Head()
-	if err == nil {
+	head := log.Head
+	if head != nil {
 		t.Errorf("Expected head to be nil after clear, but got head with hash %s", head.Hash)
 	}
 }
@@ -354,20 +354,12 @@ func TestLog_Head(t *testing.T) {
 		t.Fatalf("Failed to create log: %v", err)
 	}
 
-	_, err = log.Head()
-	if err == nil {
-		t.Error("Expected error when getting head of empty log, but got none")
-	}
-
 	entry, err := log.Append("first entry")
 	if err != nil {
 		t.Fatalf("Failed to append entry: %v", err)
 	}
 
-	head, err := log.Head()
-	if err != nil {
-		t.Fatalf("Failed to get log head: %v", err)
-	}
+	head := log.Head
 
 	if head.Hash != entry.Hash {
 		t.Errorf("Head hash does not match the last appended entry. Expected %s, got %s",
