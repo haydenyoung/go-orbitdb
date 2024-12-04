@@ -137,7 +137,7 @@ func (s *Sync) Add(payload string) error {
 	return nil
 }
 
-// processMessages listens for incoming messages from PubSub.
+// processMessages listens for incoming messages from PubSub and processes single head entries.
 func (s *Sync) processMessages() {
 	defer s.wg.Done()
 
@@ -168,19 +168,10 @@ func (s *Sync) processMessages() {
 			continue
 		}
 
-		log.Printf("Processing entry: %s from peer: %s\n", payload.Entry.Payload, payload.PeerID)
+		log.Printf("Processing head entry: %s from peer: %s\n", payload.Entry.Payload, payload.PeerID)
 
-		// Add the entry to the log
-		s.log.Mu.Lock()
-		if err := s.log.Entries.Put(payload.Entry.Hash, payload.Entry.Bytes); err != nil {
-			log.Printf("Failed to store entry in log: %v\n", err)
-			s.log.Mu.Unlock()
-			continue
-		}
-		s.log.Mu.Unlock()
-
-		// Notify listeners
-		s.SyncedCh <- SyncedEntry{PeerID: payload.PeerID, Entry: payload.Entry}
+		// Process the received head (log entry)
+		s.receiveHead(payload.PeerID, payload.Entry)
 	}
 }
 
@@ -197,6 +188,11 @@ func (s *Sync) trackPeers() {
 				if _, exists := s.peerMap[p.String()]; !exists {
 					s.peerMap[p.String()] = true
 					s.PeerJoin(p.String()) // New peer has joined
+
+					// Send the head to the new peer
+					if err := s.sendHead(p.String()); err != nil {
+						log.Printf("Error sending head to new peer %s: %v", p.String(), err)
+					}
 				}
 			}
 
@@ -275,4 +271,58 @@ func (s *Sync) PeerLeave(peerID string) {
 // DiscoverPeers lists peers connected to the topic.
 func (s *Sync) DiscoverPeers() []peer.ID {
 	return s.topic.ListPeers()
+}
+
+// sendHead sends the current head (latest log entry) to a specific peer.
+func (s *Sync) sendHead(peerID string) error {
+	s.log.Mu.Lock()
+	defer s.log.Mu.Unlock()
+
+	// Get the latest log entry (head)
+	head := s.log.Head
+
+	// Ensure the head entry is the latest and correctly formed
+	if head == nil {
+		return fmt.Errorf("no head entry found")
+	}
+
+	entry := oplog.Encode(head.Entry)
+
+	// Broadcast the head (entry) to the peer
+	entryData := struct {
+		PeerID string
+		Entry  oplog.EncodedEntry
+	}{
+		PeerID: s.ID,
+		Entry:  entry,
+	}
+
+	data, err := json.Marshal(entryData)
+	if err != nil {
+		return fmt.Errorf("failed to marshal entry: %w", err)
+	}
+
+	if err := s.topic.Publish(s.ctx, data); err != nil {
+		return fmt.Errorf("failed to publish entry: %w", err)
+	}
+
+	log.Printf("Broadcasted head entry to peer %s: %s", peerID, head.Payload)
+	return nil
+}
+
+// receiveHead processes a received head (log entry) from a peer.
+func (s *Sync) receiveHead(peerID string, entry oplog.EncodedEntry) {
+	// Add the entry to the log
+	s.log.Mu.Lock()
+	if err := s.log.Entries.Put(entry.Hash, entry.Bytes); err != nil {
+		log.Printf("Failed to store entry from peer %s: %v", peerID, err)
+		s.log.Mu.Unlock()
+		return
+	}
+	s.log.Mu.Unlock()
+
+	log.Printf("Processed head entry from peer %s: %s", peerID, entry.Payload)
+
+	// Notify listeners via the SyncedCh channel
+	s.SyncedCh <- SyncedEntry{PeerID: peerID, Entry: entry}
 }
