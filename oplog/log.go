@@ -16,7 +16,7 @@ type Log struct {
 	ID       string
 	Identity *identitytypes.Identity
 	Clock    Clock
-	head     *EncodedEntry
+	Head     *EncodedEntry
 	Entries  storage.Storage
 	keystore *keystore.KeyStore
 	Mu       sync.RWMutex
@@ -70,8 +70,8 @@ func (l *Log) Append(payload string) (*EncodedEntry, error) {
 	l.Clock = TickClock(l.Clock)
 
 	var next []string
-	if l.head != nil {
-		next = []string{l.head.Hash}
+	if l.Head != nil {
+		next = []string{l.Head.Hash}
 	}
 
 	entry := NewEntry(l.keystore, l.Identity, l.ID, payload, l.Clock, next, nil)
@@ -80,7 +80,7 @@ func (l *Log) Append(payload string) (*EncodedEntry, error) {
 		return nil, fmt.Errorf("failed to store entry: %w", err)
 	}
 
-	l.head = &entry
+	l.Head = &entry
 	return &entry, nil
 }
 
@@ -155,8 +155,8 @@ func (l *Log) Traverse(startHash string, shouldStop func(*EncodedEntry) bool) ([
 			return nil, fmt.Errorf("failed to start traversal from entry: %w", err)
 		}
 		stack = []*EncodedEntry{startEntry}
-	} else if l.head != nil {
-		stack = []*EncodedEntry{l.head}
+	} else if l.Head != nil {
+		stack = []*EncodedEntry{l.Head}
 	} else {
 		return nil, errors.New("no starting point for traversal")
 	}
@@ -234,8 +234,8 @@ func (l *Log) JoinEntry(entry *EncodedEntry, processed map[string]bool) error {
 		}
 
 		// Update the log head if the new entry has a more recent clock
-		if l.head == nil || CompareClocks(currentEntry.Clock, l.head.Clock) > 0 {
-			l.head = currentEntry
+		if l.Head == nil || CompareClocks(currentEntry.Clock, l.Head.Clock) > 0 {
+			l.Head = currentEntry
 		}
 	}
 
@@ -277,20 +277,8 @@ func (l *Log) Clear() error {
 		return fmt.Errorf("failed to clear Entries: %w", err)
 	}
 
-	l.head = nil
+	l.Head = nil
 	return nil
-}
-
-// Head returns the current head of the log or an error if the head is nil
-func (l *Log) Head() (*EncodedEntry, error) {
-	l.Mu.RLock()
-	defer l.Mu.RUnlock()
-
-	if l.head == nil {
-		return nil, errors.New("log head is nil")
-	}
-
-	return l.head, nil
 }
 
 // Close closes the log and its underlying storage
