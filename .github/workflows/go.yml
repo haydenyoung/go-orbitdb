@@ -22,16 +22,6 @@ jobs:
       with:
         go-version: ${{ matrix.go-version }}
 
-    - name: Cache Go modules
-      uses: actions/cache@v2
-      with:
-        path: |
-          ~/.cache/go-build
-          ~/go/pkg/mod
-        key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.mod') }}
-        restore-keys: |
-          ${{ runner.os }}-go-mod-
-
     - name: Install dependencies
       run: go mod tidy
 
