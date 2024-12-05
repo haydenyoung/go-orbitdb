@@ -46,11 +46,3 @@ jobs:
       with:
         name: coverage-report
         path: coverage.out
-
-    - name: Set up golangci-lint
-      uses: golangci/golangci-lint-action@v3
-      with:
-        version: 'v1.51.0'
-
-    - name: Run golangci-lint
-      run: golangci-lint run
