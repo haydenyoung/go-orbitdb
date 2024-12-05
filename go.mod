@@ -1,9 +1,8 @@
 module orbitdb/go-orbitdb
 
-go 1.23.2
+go 1.23
 
 require (
-	github.com/golang/mock v1.6.0
 	github.com/hashicorp/golang-lru v1.0.2
 	github.com/ipfs/boxo v0.10.2-0.20230629143123-2d3edc552442
 	github.com/ipfs/go-block-format v0.1.2
