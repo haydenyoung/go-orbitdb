@@ -1,6 +1,6 @@
 module orbitdb/go-orbitdb
 
-go 1.23.2
+go 1.23
 
 require (
 	github.com/hashicorp/golang-lru v1.0.2
